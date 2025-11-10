@@ -1,5 +1,5 @@
 {
-  "name": "opencode-token-analyzer-plugin",
+  "name": "opencode-tokenscope",
   "version": "1.0.0",
   "description": "OpenCode plugin for detailed token usage analysis",
   "type": "module",
