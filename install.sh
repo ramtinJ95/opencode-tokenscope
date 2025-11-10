@@ -80,7 +80,6 @@ echo_step "3/5 Downloading plugin files..."
 FILES=(
     "plugin/tokenscope.ts"
     "plugin/models.json"
-    "plugin/install.sh"
     "plugin/package.json"
     "command/tokenscope.md"
 )
@@ -107,19 +106,16 @@ done
 
 echo_info "All files downloaded successfully"
 
-# Make install script executable
-chmod +x "$OPENCODE_DIR/plugin/install.sh"
-
-# Run dependency installer
+# Install dependencies
 echo_step "4/5 Installing dependencies..."
 echo_info "This may take 1-2 minutes..."
 
 cd "$OPENCODE_DIR/plugin"
-if ./install.sh; then
+if npm install --prefix "$OPENCODE_DIR/plugin" js-tiktoken@1.0.15 @huggingface/transformers@3.1.2 --save; then
     echo_info "Dependencies installed successfully"
 else
     echo_error "Failed to install dependencies"
-    echo_error "You can try running manually: cd ~/.config/opencode/plugin && ./install.sh"
+    echo_error "You can try running manually: cd ~/.config/opencode/plugin && npm install"
     exit 1
 fi
 
