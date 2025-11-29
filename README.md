@@ -83,6 +83,22 @@ Then restart OpenCode and run `/tokenscope`
 
 </details>
 
+## Updating
+
+To update to the latest version, run the install script with the `--update` flag:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/ramtinJ95/opencode-tokenscope/main/install.sh | bash -s -- --update
+```
+
+This will download the latest plugin files while skipping dependency installation (faster).
+
+For a full reinstall (if you're having issues):
+
+```bash
+curl -sSL https://raw.githubusercontent.com/ramtinJ95/opencode-tokenscope/main/install.sh | bash
+```
+
 ## Usage
 
 ### Basic Command

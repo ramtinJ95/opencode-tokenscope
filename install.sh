@@ -4,6 +4,17 @@ set -euo pipefail
 # OpenCode Token Analyzer Plugin - One-Line Installer
 # This script downloads and installs the plugin from GitHub
 
+# Parse arguments
+UPDATE_MODE=false
+for arg in "$@"; do
+    case $arg in
+        --update)
+            UPDATE_MODE=true
+            shift
+            ;;
+    esac
+done
+
 # Color output for better readability
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -42,7 +53,11 @@ trap cleanup EXIT
 
 echo ""
 echo "╔════════════════════════════════════════════════════════════╗"
+if [ "$UPDATE_MODE" = true ]; then
+echo "║   OpenCode Token Analyzer Plugin - Updater                ║"
+else
 echo "║   OpenCode Token Analyzer Plugin - Installer              ║"
+fi
 echo "╚════════════════════════════════════════════════════════════╝"
 echo ""
 
@@ -108,15 +123,24 @@ echo_info "All files downloaded successfully"
 
 # Install dependencies
 echo_step "4/5 Installing dependencies..."
-echo_info "This may take 1-2 minutes..."
 
-cd "$OPENCODE_DIR/plugin"
-if npm install --prefix "$OPENCODE_DIR/plugin" js-tiktoken@1.0.15 @huggingface/transformers@3.1.2 --save; then
-    echo_info "Dependencies installed successfully"
+DEPS_EXIST=false
+if [ -d "$OPENCODE_DIR/plugin/node_modules/js-tiktoken" ] && [ -d "$OPENCODE_DIR/plugin/node_modules/@huggingface/transformers" ]; then
+    DEPS_EXIST=true
+fi
+
+if [ "$UPDATE_MODE" = true ] && [ "$DEPS_EXIST" = true ]; then
+    echo_info "Update mode: Dependencies already installed, skipping..."
 else
-    echo_error "Failed to install dependencies"
-    echo_error "You can try running manually: cd ~/.config/opencode/plugin && npm install"
-    exit 1
+    echo_info "This may take 1-2 minutes..."
+    cd "$OPENCODE_DIR/plugin"
+    if npm install --prefix "$OPENCODE_DIR/plugin" js-tiktoken@1.0.15 @huggingface/transformers@3.1.2 --save; then
+        echo_info "Dependencies installed successfully"
+    else
+        echo_error "Failed to install dependencies"
+        echo_error "You can try running manually: cd ~/.config/opencode/plugin && npm install"
+        exit 1
+    fi
 fi
 
 # Verify installation
@@ -145,11 +169,19 @@ else
     exit 1
 fi
 
+# Get installed version
+INSTALLED_VERSION=$(grep -o '"version": *"[^"]*"' "$OPENCODE_DIR/plugin/package.json" | cut -d'"' -f4)
+
 echo ""
 echo "╔════════════════════════════════════════════════════════════╗"
+if [ "$UPDATE_MODE" = true ]; then
+echo "║   Update Complete!                                         ║"
+else
 echo "║   Installation Complete!                                   ║"
+fi
 echo "╚════════════════════════════════════════════════════════════╝"
 echo ""
+echo_info "Version: $INSTALLED_VERSION"
 echo_info "Plugin installed at: $OPENCODE_DIR/plugin/tokenscope.ts"
 echo_info "Command installed at: $OPENCODE_DIR/command/tokenscope.md"
 echo ""
