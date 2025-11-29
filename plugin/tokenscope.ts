@@ -24,6 +24,7 @@ interface SessionMessageInfo {
   providerID?: string
   system?: string[]
   tokens?: TokenUsage
+  cost?: number  // API-calculated cost in dollars (only on assistant messages)
 }
 
 interface TokenUsage {
@@ -85,14 +86,19 @@ interface TokenAnalysis {
   totalTokens: number
   inputTokens: number
   outputTokens: number
+  reasoningTokens: number  // Track reasoning separately for accuracy
   cacheReadTokens: number
   cacheWriteTokens: number
   assistantMessageCount: number
   // Most recent call telemetry (for current context)
   mostRecentInput: number
   mostRecentOutput: number
+  mostRecentReasoning: number  // Track reasoning separately
   mostRecentCacheRead: number
   mostRecentCacheWrite: number
+  // API-provided costs (accurate, from OpenCode)
+  sessionCost: number      // Total cost across all API calls (sum of message.info.cost)
+  mostRecentCost: number   // Cost of most recent API call
   allToolsCalled: string[]
   toolCallCounts: Map<string, number>
 }
@@ -113,20 +119,39 @@ interface CategoryEntrySource {
 }
 
 interface CostEstimate {
-  inputCost: number
-  outputCost: number
-  cacheCost: number
-  totalCost: number
+  // Cost source detection
+  isSubscription: boolean   // True if API cost is 0 (subscription user)
+  
+  // API-provided costs (when available - API key users)
+  apiSessionCost: number    // Total cost from OpenCode API
+  apiMostRecentCost: number // Most recent call cost from API
+  
+  // Estimated costs (calculated from models.json pricing)
+  estimatedSessionCost: number    // Calculated cost for session
+  estimatedInputCost: number      // Breakdown: input tokens
+  estimatedOutputCost: number     // Breakdown: output + reasoning tokens
+  estimatedCacheReadCost: number  // Breakdown: cache read
+  estimatedCacheWriteCost: number // Breakdown: cache write
+  
+  // Pricing info (for display)
   pricePerMillionInput: number
   pricePerMillionOutput: number
   pricePerMillionCacheRead: number
   pricePerMillionCacheWrite: number
+  
+  // Token counts for display
+  inputTokens: number
+  outputTokens: number
+  reasoningTokens: number
+  cacheReadTokens: number
+  cacheWriteTokens: number
 }
 
 // ============================================================================
 // Model Configuration
 // ============================================================================
 
+// Pricing data for cost estimation (used when API cost is 0, e.g., subscription users)
 interface ModelPricing {
   input: number
   output: number
@@ -137,7 +162,7 @@ interface ModelPricing {
 // Cache for loaded pricing data
 let PRICING_CACHE: Record<string, ModelPricing> | null = null
 
-// Load pricing data from models.json
+// Load pricing data from models.json for fallback cost estimation
 async function loadModelPricing(): Promise<Record<string, ModelPricing>> {
   if (PRICING_CACHE) {
     return PRICING_CACHE
@@ -149,7 +174,6 @@ async function loadModelPricing(): Promise<Record<string, ModelPricing>> {
     PRICING_CACHE = JSON.parse(data)
     return PRICING_CACHE!
   } catch (error) {
-    console.error('Failed to load models.json, using fallback pricing:', error)
     // Fallback to minimal pricing if file can't be loaded
     PRICING_CACHE = {
       "default": { input: 1, output: 3, cacheWrite: 0, cacheRead: 0 }
@@ -634,13 +658,17 @@ class TokenAnalysisEngine {
         system.totalTokens + user.totalTokens + assistant.totalTokens + tools.totalTokens + reasoning.totalTokens,
       inputTokens: 0,
       outputTokens: 0,
+      reasoningTokens: 0,
       cacheReadTokens: 0,
       cacheWriteTokens: 0,
       assistantMessageCount: 0,
       mostRecentInput: 0,
       mostRecentOutput: 0,
+      mostRecentReasoning: 0,
       mostRecentCacheRead: 0,
       mostRecentCacheWrite: 0,
+      sessionCost: 0,
+      mostRecentCost: 0,
       allToolsCalled,
       toolCallCounts,
     }
@@ -673,10 +701,10 @@ class TokenAnalysisEngine {
   }
 
   private applyTelemetryAdjustments(analysis: TokenAnalysis, messages: SessionMessage[]) {
-    // Filter to assistant messages with tokens
+    // Filter to assistant messages with tokens or cost
     const assistants = messages
-      .filter((m) => m.info.role === "assistant" && m.info?.tokens)
-      .map((m) => ({ msg: m, tokens: m.info.tokens! }))
+      .filter((m) => m.info.role === "assistant" && (m.info?.tokens || m.info?.cost !== undefined))
+      .map((m) => ({ msg: m, tokens: m.info.tokens, cost: m.info.cost ?? 0 }))
 
     // Aggregate telemetry across ALL assistant messages (for billing)
     let totalInput = 0
@@ -684,24 +712,30 @@ class TokenAnalysisEngine {
     let totalReasoning = 0
     let totalCacheRead = 0
     let totalCacheWrite = 0
+    let totalCost = 0  // Sum of API-provided costs
 
-    for (const { tokens } of assistants) {
-      totalInput += Number(tokens.input) || 0
-      totalOutput += Number(tokens.output) || 0
-      totalReasoning += Number(tokens.reasoning) || 0
-      totalCacheRead += Number(tokens.cache?.read) || 0
-      totalCacheWrite += Number(tokens.cache?.write) || 0
+    for (const { tokens, cost } of assistants) {
+      if (tokens) {
+        totalInput += Number(tokens.input) || 0
+        totalOutput += Number(tokens.output) || 0
+        totalReasoning += Number(tokens.reasoning) || 0
+        totalCacheRead += Number(tokens.cache?.read) || 0
+        totalCacheWrite += Number(tokens.cache?.write) || 0
+      }
+      totalCost += Number(cost) || 0  // Accumulate API cost
     }
 
     // Find MOST RECENT message with non-zero usage (for current context - TUI match)
     const mostRecentWithUsage = [...assistants]
       .reverse()
       .find(({ tokens }) => 
-        (Number(tokens.input) || 0) +
-        (Number(tokens.output) || 0) +
-        (Number(tokens.reasoning) || 0) +
-        (Number(tokens.cache?.read) || 0) +
-        (Number(tokens.cache?.write) || 0) > 0
+        tokens && (
+          (Number(tokens.input) || 0) +
+          (Number(tokens.output) || 0) +
+          (Number(tokens.reasoning) || 0) +
+          (Number(tokens.cache?.read) || 0) +
+          (Number(tokens.cache?.write) || 0) > 0
+        )
       ) ?? assistants[assistants.length - 1]  // Fallback to last
 
     // Extract most recent telemetry
@@ -710,26 +744,38 @@ class TokenAnalysisEngine {
     let mostRecentReasoning = 0
     let mostRecentCacheRead = 0
     let mostRecentCacheWrite = 0
+    let mostRecentCost = 0
 
     if (mostRecentWithUsage) {
       const t = mostRecentWithUsage.tokens
-      mostRecentInput = Number(t.input) || 0
-      mostRecentOutput = Number(t.output) || 0
-      mostRecentReasoning = Number(t.reasoning) || 0
-      mostRecentCacheRead = Number(t.cache?.read) || 0
-      mostRecentCacheWrite = Number(t.cache?.write) || 0
+      if (t) {
+        mostRecentInput = Number(t.input) || 0
+        mostRecentOutput = Number(t.output) || 0
+        mostRecentReasoning = Number(t.reasoning) || 0
+        mostRecentCacheRead = Number(t.cache?.read) || 0
+        mostRecentCacheWrite = Number(t.cache?.write) || 0
+      }
+      mostRecentCost = Number(mostRecentWithUsage.cost) || 0
     }
 
     // Store the aggregated API telemetry values (for billing)
+    // Keep reasoning separate for accuracy (OpenCode charges reasoning at output rate)
     analysis.inputTokens = totalInput
-    analysis.outputTokens = totalOutput + totalReasoning
+    analysis.outputTokens = totalOutput
+    analysis.reasoningTokens = totalReasoning
     analysis.cacheReadTokens = totalCacheRead
     analysis.cacheWriteTokens = totalCacheWrite
     analysis.assistantMessageCount = assistants.length
     
+    // Store API-provided costs (accurate, from OpenCode)
+    analysis.sessionCost = totalCost
+    analysis.mostRecentCost = mostRecentCost
+    
     // Store most recent call telemetry (for TUI matching)
+    // Keep reasoning separate here too
     analysis.mostRecentInput = mostRecentInput
-    analysis.mostRecentOutput = mostRecentOutput + mostRecentReasoning
+    analysis.mostRecentOutput = mostRecentOutput
+    analysis.mostRecentReasoning = mostRecentReasoning
     analysis.mostRecentCacheRead = mostRecentCacheRead
     analysis.mostRecentCacheWrite = mostRecentCacheWrite
 
@@ -768,24 +814,55 @@ class TokenAnalysisEngine {
 class CostCalculator {
   constructor(private pricingData: Record<string, ModelPricing>) {}
 
+  /**
+   * Hybrid cost calculation:
+   * - If API cost > 0: Use API cost (accurate, from OpenCode billing)
+   * - If API cost = 0: User is on subscription, calculate estimated cost from models.json
+   * 
+   * Always provides estimated cost for comparison/budgeting purposes.
+   */
   calculateCost(analysis: TokenAnalysis): CostEstimate {
     const pricing = this.getPricing(analysis.model.name)
     
-    const inputCost = (analysis.inputTokens / 1_000_000) * pricing.input
-    const outputCost = (analysis.outputTokens / 1_000_000) * pricing.output
-    const cacheReadCost = (analysis.cacheReadTokens / 1_000_000) * pricing.cacheRead
-    const cacheWriteCost = (analysis.cacheWriteTokens / 1_000_000) * pricing.cacheWrite
-    const cacheCost = cacheReadCost + cacheWriteCost
+    // Detect subscription mode: API cost is 0 but there are API calls with tokens
+    const hasActivity = analysis.assistantMessageCount > 0 && 
+      (analysis.inputTokens > 0 || analysis.outputTokens > 0)
+    const isSubscription = hasActivity && analysis.sessionCost === 0
+    
+    // Calculate estimated costs from models.json pricing
+    // Note: Reasoning tokens are typically charged at output rate
+    const estimatedInputCost = (analysis.inputTokens / 1_000_000) * pricing.input
+    const estimatedOutputCost = ((analysis.outputTokens + analysis.reasoningTokens) / 1_000_000) * pricing.output
+    const estimatedCacheReadCost = (analysis.cacheReadTokens / 1_000_000) * pricing.cacheRead
+    const estimatedCacheWriteCost = (analysis.cacheWriteTokens / 1_000_000) * pricing.cacheWrite
+    const estimatedSessionCost = estimatedInputCost + estimatedOutputCost + estimatedCacheReadCost + estimatedCacheWriteCost
     
     return {
-      inputCost,
-      outputCost,
-      cacheCost,
-      totalCost: inputCost + outputCost + cacheCost,
+      isSubscription,
+      
+      // API costs (0 for subscription users)
+      apiSessionCost: analysis.sessionCost,
+      apiMostRecentCost: analysis.mostRecentCost,
+      
+      // Estimated costs (always calculated)
+      estimatedSessionCost,
+      estimatedInputCost,
+      estimatedOutputCost,
+      estimatedCacheReadCost,
+      estimatedCacheWriteCost,
+      
+      // Pricing info for display
       pricePerMillionInput: pricing.input,
       pricePerMillionOutput: pricing.output,
       pricePerMillionCacheRead: pricing.cacheRead,
       pricePerMillionCacheWrite: pricing.cacheWrite,
+      
+      // Token counts
+      inputTokens: analysis.inputTokens,
+      outputTokens: analysis.outputTokens,
+      reasoningTokens: analysis.reasoningTokens,
+      cacheReadTokens: analysis.cacheReadTokens,
+      cacheWriteTokens: analysis.cacheWriteTokens,
     }
   }
   
@@ -800,7 +877,6 @@ class CostCalculator {
     
     // Try prefix matching for model families
     const lowerModel = normalizedName.toLowerCase()
-    
     for (const [key, pricing] of Object.entries(this.pricingData)) {
       if (lowerModel.startsWith(key.toLowerCase())) {
         return pricing
@@ -908,11 +984,13 @@ class OutputFormatter {
       analysis.totalTokens,
       analysis.inputTokens,
       analysis.outputTokens,
+      analysis.reasoningTokens,
       analysis.cacheReadTokens,
       analysis.cacheWriteTokens,
       analysis.assistantMessageCount,
       analysis.mostRecentInput,
       analysis.mostRecentOutput,
+      analysis.mostRecentReasoning,
       analysis.mostRecentCacheRead,
       analysis.mostRecentCacheWrite,
       inputCategories,
@@ -929,11 +1007,13 @@ class OutputFormatter {
     totalTokens: number,
     inputTokens: number,
     outputTokens: number,
+    reasoningTokens: number,
     cacheReadTokens: number,
     cacheWriteTokens: number,
     assistantMessageCount: number,
     mostRecentInput: number,
     mostRecentOutput: number,
+    mostRecentReasoning: number,
     mostRecentCacheRead: number,
     mostRecentCacheWrite: number,
     inputCategories: Array<{ label: string; tokens: number }>,
@@ -950,9 +1030,10 @@ class OutputFormatter {
     lines.push(`═══════════════════════════════════════════════════════════════════════════`)
     lines.push(``)
 
-    // LOCAL TOKEN BREAKDOWN Section
-    lines.push(`📊 LOCAL TOKEN BREAKDOWN (Estimated from content analysis)`)
+    // LOCAL TOKEN BREAKDOWN Section - Our unique value: category-level insights
+    lines.push(`📊 TOKEN BREAKDOWN BY CATEGORY`)
     lines.push(`─────────────────────────────────────────────────────────────────────────`)
+    lines.push(`Estimated using tokenizer analysis of message content:`)
     lines.push(``)
 
     // INPUT TOKENS Section
@@ -987,42 +1068,27 @@ class OutputFormatter {
     lines.push(`Local Total: ${this.formatNumber(totalTokens)} tokens (estimated)`)
     lines.push(``)
 
-    // Context Window Calculation
-    const systemTokens = inputCategories.find(c => c.label === 'SYSTEM')?.tokens || 0
-    const userTokens = inputCategories.find(c => c.label === 'USER')?.tokens || 0
-    const toolsTokens = inputCategories.find(c => c.label === 'TOOLS')?.tokens || 0
-    const assistantTokens = outputCategories.find(c => c.label === 'ASSISTANT')?.tokens || 0
-    const reasoningTokens = outputCategories.find(c => c.label === 'REASONING')?.tokens || 0
-    
     lines.push(`═══════════════════════════════════════════════════════════════════════════`)
-    lines.push(`📐 CURRENT CONTEXT WINDOW (Matches OpenCode TUI display)`)
+    lines.push(`📐 MOST RECENT API CALL`)
     lines.push(`─────────────────────────────────────────────────────────────────────────`)
     lines.push(``)
-    lines.push(`Most recent API call telemetry:`)
+    lines.push(`Raw telemetry from last API response:`)
     lines.push(`  Input (fresh):     ${this.formatNumber(mostRecentInput).padStart(10)} tokens`)
     lines.push(`  Cache read:        ${this.formatNumber(mostRecentCacheRead).padStart(10)} tokens`)
+    if (mostRecentCacheWrite > 0) {
+      lines.push(`  Cache write:       ${this.formatNumber(mostRecentCacheWrite).padStart(10)} tokens`)
+    }
     lines.push(`  Output:            ${this.formatNumber(mostRecentOutput).padStart(10)} tokens`)
-    lines.push(`  Total (API):       ${this.formatNumber(mostRecentInput + mostRecentCacheRead + mostRecentOutput).padStart(10)} tokens`)
-    lines.push(``)
-    lines.push(`Context breakdown (estimated):`)
-    lines.push(`  System prompts:    ${this.formatNumber(systemTokens).padStart(10)} tokens`)
-    lines.push(`  User messages:     ${this.formatNumber(userTokens).padStart(10)} tokens`)
-    lines.push(`  Tool outputs:      ${this.formatNumber(toolsTokens).padStart(10)} tokens`)
-    lines.push(`  Assistant msgs:    ${this.formatNumber(assistantTokens).padStart(10)} tokens`)
-    lines.push(`  Reasoning:         ${this.formatNumber(reasoningTokens).padStart(10)} tokens`)
+    if (mostRecentReasoning > 0) {
+      lines.push(`  Reasoning:         ${this.formatNumber(mostRecentReasoning).padStart(10)} tokens`)
+    }
     lines.push(`  ───────────────────────────────────`)
-    lines.push(`  Current Context:   ${this.formatNumber(totalTokens).padStart(10)} tokens`)
-    lines.push(``)
-    lines.push(`Note: System = (Input + Cache) - (User + Tools) = ${this.formatNumber(mostRecentInput + mostRecentCacheRead)} - ${this.formatNumber(userTokens + toolsTokens)} = ${this.formatNumber(systemTokens)}`)
-    lines.push(``)
-    lines.push(`This should closely match the OpenCode TUI header. Small differences (~2K) are`)
-    lines.push(`expected because the TUI updates after this analysis runs, including tokens`)
-    lines.push(`from the /tokens command itself.`)
+    lines.push(`  Total:             ${this.formatNumber(mostRecentInput + mostRecentCacheRead + mostRecentCacheWrite + mostRecentOutput + mostRecentReasoning).padStart(10)} tokens`)
     lines.push(``)
 
     // API TELEMETRY Section
     lines.push(`═══════════════════════════════════════════════════════════════════════════`)
-    lines.push(`📡 SESSION-WIDE BILLING (All ${assistantMessageCount} API calls aggregated)`)
+    lines.push(`📡 SESSION TOTALS (All ${assistantMessageCount} API calls)`)
     lines.push(`─────────────────────────────────────────────────────────────────────────`)
     lines.push(``)
     lines.push(`Total tokens processed across the entire session (for cost calculation):`)
@@ -1031,53 +1097,81 @@ class OutputFormatter {
     lines.push(`  Cache read:        ${this.formatNumber(cacheReadTokens).padStart(10)} (cached tokens across all calls)`)
     lines.push(`  Cache write:       ${this.formatNumber(cacheWriteTokens).padStart(10)} (tokens written to cache)`)
     lines.push(`  Output tokens:     ${this.formatNumber(outputTokens).padStart(10)} (all model responses)`)
+    if (reasoningTokens > 0) {
+      lines.push(`  Reasoning tokens:  ${this.formatNumber(reasoningTokens).padStart(10)} (thinking/reasoning)`)
+    }
     lines.push(`  ───────────────────────────────────`)
-    lines.push(`  Session Total:     ${this.formatNumber(inputTokens + cacheReadTokens + cacheWriteTokens + outputTokens).padStart(10)} tokens (for billing)`)
+    lines.push(`  Session Total:     ${this.formatNumber(inputTokens + cacheReadTokens + cacheWriteTokens + outputTokens + reasoningTokens).padStart(10)} tokens (for billing)`)
     lines.push(``)
 
     // Calculate summary values
-    const localInputEstimate = systemTokens + userTokens + toolsTokens
     const apiInputActual = inputTokens + cacheReadTokens
-    const localOutputEstimate = assistantTokens + reasoningTokens
-    const apiOutputActual = outputTokens
+    const apiOutputActual = outputTokens + reasoningTokens
+    const sessionTotal = inputTokens + cacheReadTokens + cacheWriteTokens + outputTokens + reasoningTokens
+    const lastCallTotal = mostRecentInput + mostRecentCacheRead + mostRecentCacheWrite + mostRecentOutput + mostRecentReasoning
     
     lines.push(`═══════════════════════════════════════════════════════════════════════════`)
     lines.push(`📊 SUMMARY`)
     lines.push(`─────────────────────────────────────────────────────────────────────────`)
     lines.push(``)
-    lines.push(`Current Context (TUI):       ${this.formatNumber(totalTokens).padStart(10)} tokens`)
-    lines.push(`Session Total (Billing):     ${this.formatNumber(apiInputActual + apiOutputActual).padStart(10)} tokens`)
-    lines.push(`API Calls Made:              ${assistantMessageCount}`)
-    lines.push(``)
-    lines.push(`Note: "Current Context" shows tokens in the most recent API call context`)
-    lines.push(`(matching what OpenCode TUI displays). "Session Total" shows all tokens`)
-    lines.push(`processed across all API calls (for accurate cost calculation).`)
-    lines.push(``)
-    lines.push(`System prompts are inferred from API telemetry as they're not exposed`)
-    lines.push(`in the session messages API.`)
+    lines.push(`Last API Call:        ${this.formatNumber(lastCallTotal).padStart(10)} tokens`)
+    lines.push(`Session Total:        ${this.formatNumber(sessionTotal).padStart(10)} tokens`)
+    lines.push(`API Calls Made:       ${assistantMessageCount.toString().padStart(10)}`)
     lines.push(`═══════════════════════════════════════════════════════════════════════════`)
 
-    // Cost Estimation
+    // Cost Display - Hybrid approach
     lines.push(``)
-    lines.push(`💰 COST ESTIMATION (Based on API telemetry)`)
-    lines.push(`─────────────────────────────────────────────────────────────────────────`)
-    lines.push(`Input tokens:    ${this.formatNumber(inputTokens).padStart(10)} × $${cost.pricePerMillionInput.toFixed(2)}/M  = $${cost.inputCost.toFixed(4)}`)
-    lines.push(`Output tokens:   ${this.formatNumber(outputTokens).padStart(10)} × $${cost.pricePerMillionOutput.toFixed(2)}/M = $${cost.outputCost.toFixed(4)}`)
-    
-    if (cost.cacheCost > 0) {
+    if (cost.isSubscription) {
+      // Subscription user: Show estimated cost (what they would pay with API keys)
+      lines.push(`💰 ESTIMATED SESSION COST (API Key Pricing)`)
+      lines.push(`─────────────────────────────────────────────────────────────────────────`)
+      lines.push(``)
+      lines.push(`You appear to be on a subscription plan (API cost is $0).`)
+      lines.push(`Here's what this session would cost with direct API access:`)
+      lines.push(``)
+      lines.push(`  Input tokens:      ${this.formatNumber(inputTokens).padStart(10)} × $${cost.pricePerMillionInput.toFixed(2)}/M  = $${cost.estimatedInputCost.toFixed(4)}`)
+      lines.push(`  Output tokens:     ${this.formatNumber(outputTokens + reasoningTokens).padStart(10)} × $${cost.pricePerMillionOutput.toFixed(2)}/M  = $${cost.estimatedOutputCost.toFixed(4)}`)
+      if (cacheReadTokens > 0 && cost.pricePerMillionCacheRead > 0) {
+        lines.push(`  Cache read:        ${this.formatNumber(cacheReadTokens).padStart(10)} × $${cost.pricePerMillionCacheRead.toFixed(2)}/M  = $${cost.estimatedCacheReadCost.toFixed(4)}`)
+      }
+      if (cacheWriteTokens > 0 && cost.pricePerMillionCacheWrite > 0) {
+        lines.push(`  Cache write:       ${this.formatNumber(cacheWriteTokens).padStart(10)} × $${cost.pricePerMillionCacheWrite.toFixed(2)}/M  = $${cost.estimatedCacheWriteCost.toFixed(4)}`)
+      }
+      lines.push(`─────────────────────────────────────────────────────────────────────────`)
+      lines.push(`ESTIMATED TOTAL: $${cost.estimatedSessionCost.toFixed(4)}`)
+      lines.push(``)
+      lines.push(`Note: This estimate uses standard API pricing from models.json.`)
+      lines.push(`Actual API costs may vary based on provider and context size.`)
+    } else {
+      // API key user: Show actual API cost with optional estimate comparison
+      lines.push(`💰 SESSION COST`)
+      lines.push(`─────────────────────────────────────────────────────────────────────────`)
+      lines.push(``)
+      lines.push(`Token usage breakdown:`)
+      lines.push(`  Input tokens:      ${this.formatNumber(inputTokens).padStart(10)}`)
+      lines.push(`  Output tokens:     ${this.formatNumber(outputTokens).padStart(10)}`)
+      if (reasoningTokens > 0) {
+        lines.push(`  Reasoning tokens:  ${this.formatNumber(reasoningTokens).padStart(10)}`)
+      }
       if (cacheReadTokens > 0) {
-        const cacheReadCost = (cacheReadTokens / 1_000_000) * cost.pricePerMillionCacheRead
-        lines.push(`Cache read:      ${this.formatNumber(cacheReadTokens).padStart(10)} × $${cost.pricePerMillionCacheRead.toFixed(2)}/M  = $${cacheReadCost.toFixed(4)}`)
+        lines.push(`  Cache read:        ${this.formatNumber(cacheReadTokens).padStart(10)}`)
       }
       if (cacheWriteTokens > 0) {
-        const cacheWriteCost = (cacheWriteTokens / 1_000_000) * cost.pricePerMillionCacheWrite
-        lines.push(`Cache write:     ${this.formatNumber(cacheWriteTokens).padStart(10)} × $${cost.pricePerMillionCacheWrite.toFixed(2)}/M  = $${cacheWriteCost.toFixed(4)}`)
+        lines.push(`  Cache write:       ${this.formatNumber(cacheWriteTokens).padStart(10)}`)
       }
+      lines.push(``)
       lines.push(`─────────────────────────────────────────────────────────────────────────`)
-      lines.push(`TOTAL COST: $${cost.totalCost.toFixed(4)}`)
-    } else {
-      lines.push(`─────────────────────────────────────────────────────────────────────────`)
-      lines.push(`TOTAL COST: $${cost.totalCost.toFixed(4)}`)
+      lines.push(`ACTUAL COST (from API):  $${cost.apiSessionCost.toFixed(4)}`)
+      
+      // Show estimate comparison if there's a significant difference
+      const diff = Math.abs(cost.apiSessionCost - cost.estimatedSessionCost)
+      const diffPercent = cost.apiSessionCost > 0 ? (diff / cost.apiSessionCost) * 100 : 0
+      if (diffPercent > 5) {
+        lines.push(`Estimated cost:          $${cost.estimatedSessionCost.toFixed(4)} (${diffPercent > 0 ? (cost.estimatedSessionCost > cost.apiSessionCost ? '+' : '-') : ''}${diffPercent.toFixed(1)}% diff)`)
+      }
+      lines.push(``)
+      lines.push(`Note: Actual cost from OpenCode includes provider-specific pricing`)
+      lines.push(`and 200K+ context adjustments.`)
     }
 
     // Tool Usage Breakdown
@@ -1142,7 +1236,7 @@ class OutputFormatter {
 // ============================================================================
 
 export const TokenAnalyzerPlugin: Plugin = async ({ client }) => {
-  // Load pricing data from models.json
+  // Load pricing data for cost estimation (used for subscription users)
   const pricingData = await loadModelPricing()
   
   const tokenizerManager = new TokenizerManager()
@@ -1211,3 +1305,4 @@ export const TokenAnalyzerPlugin: Plugin = async ({ client }) => {
     },
   }
 }
+
