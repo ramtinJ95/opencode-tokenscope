@@ -1031,12 +1031,17 @@ class OutputFormatter {
     subagentAnalysis?: SubagentAnalysis
   ): string {
     const lines: string[] = []
+    const sessionTotal = inputTokens + cacheReadTokens + cacheWriteTokens + outputTokens + reasoningTokens
+    const mainCost = cost.isSubscription ? cost.estimatedSessionCost : cost.apiSessionCost
 
+    // Header
     lines.push(`═══════════════════════════════════════════════════════════════════════════`)
     lines.push(`Token Analysis: Session ${sessionID}`)
     lines.push(`Model: ${modelName}`)
     lines.push(`═══════════════════════════════════════════════════════════════════════════`)
     lines.push(``)
+
+    // 1. TOKEN BREAKDOWN BY CATEGORY
     lines.push(`TOKEN BREAKDOWN BY CATEGORY`)
     lines.push(`─────────────────────────────────────────────────────────────────────────`)
     lines.push(`Estimated using tokenizer analysis of message content:`)
@@ -1044,34 +1049,55 @@ class OutputFormatter {
 
     const inputTotal = inputCategories.reduce((sum, cat) => sum + cat.tokens, 0)
     lines.push(`Input Categories:`)
-
     for (const category of inputCategories) {
       const barLine = this.formatCategoryBar(category.label, category.tokens, inputTotal)
-      if (barLine) {
-        lines.push(`  ${barLine}`)
-      }
+      if (barLine) lines.push(`  ${barLine}`)
     }
-
     lines.push(``)
     lines.push(`  Subtotal: ${this.formatNumber(inputTotal)} estimated input tokens`)
     lines.push(``)
 
     const outputTotal = outputCategories.reduce((sum, cat) => sum + cat.tokens, 0)
     lines.push(`Output Categories:`)
-
     for (const category of outputCategories) {
       const barLine = this.formatCategoryBar(category.label, category.tokens, outputTotal)
-      if (barLine) {
-        lines.push(`  ${barLine}`)
-      }
+      if (barLine) lines.push(`  ${barLine}`)
     }
-
     lines.push(``)
     lines.push(`  Subtotal: ${this.formatNumber(outputTotal)} estimated output tokens`)
     lines.push(``)
     lines.push(`Local Total: ${this.formatNumber(totalTokens)} tokens (estimated)`)
-    lines.push(``)
 
+    // 2. TOOL USAGE BREAKDOWN (right after token breakdown)
+    if (toolEntries.length > 0) {
+      const toolsTotalTokens = inputCategories.find(c => c.label === "TOOLS")?.tokens || 0
+      lines.push(``)
+      lines.push(`TOOL USAGE BREAKDOWN`)
+      lines.push(`─────────────────────────────────────────────────────────────────────────`)
+      for (const tool of toolEntries) {
+        const barLine = this.formatCategoryBar(tool.label, tool.tokens, toolsTotalTokens, this.TOOL_LABEL_WIDTH)
+        if (barLine) {
+          const calls = `${tool.calls}x`.padStart(5)
+          lines.push(`${barLine} ${calls}`)
+        }
+      }
+    }
+
+    // 3. TOP CONTRIBUTORS
+    if (topEntries.length > 0) {
+      lines.push(``)
+      lines.push(`TOP CONTRIBUTORS`)
+      lines.push(`─────────────────────────────────────────────────────────────────────────`)
+      for (const entry of topEntries) {
+        const percentage = ((entry.tokens / totalTokens) * 100).toFixed(1)
+        const label = `• ${entry.label}`.padEnd(this.TOP_CONTRIBUTOR_LABEL_WIDTH)
+        const formattedTokens = this.formatNumber(entry.tokens)
+        lines.push(`${label} ${formattedTokens} tokens (${percentage}%)`)
+      }
+    }
+
+    // 4. MOST RECENT API CALL
+    lines.push(``)
     lines.push(`═══════════════════════════════════════════════════════════════════════════`)
     lines.push(`MOST RECENT API CALL`)
     lines.push(`─────────────────────────────────────────────────────────────────────────`)
@@ -1088,6 +1114,8 @@ class OutputFormatter {
     }
     lines.push(`  ───────────────────────────────────`)
     lines.push(`  Total:             ${this.formatNumber(mostRecentInput + mostRecentCacheRead + mostRecentCacheWrite + mostRecentOutput + mostRecentReasoning).padStart(10)} tokens`)
+
+    // 5. SESSION TOTALS
     lines.push(``)
     lines.push(`═══════════════════════════════════════════════════════════════════════════`)
     lines.push(`SESSION TOTALS (All ${assistantMessageCount} API calls)`)
@@ -1103,22 +1131,11 @@ class OutputFormatter {
       lines.push(`  Reasoning tokens:  ${this.formatNumber(reasoningTokens).padStart(10)} (thinking/reasoning)`)
     }
     lines.push(`  ───────────────────────────────────`)
-    lines.push(`  Session Total:     ${this.formatNumber(inputTokens + cacheReadTokens + cacheWriteTokens + outputTokens + reasoningTokens).padStart(10)} tokens (for billing)`)
-    lines.push(``)
+    lines.push(`  Session Total:     ${this.formatNumber(sessionTotal).padStart(10)} tokens (for billing)`)
 
-    const sessionTotal = inputTokens + cacheReadTokens + cacheWriteTokens + outputTokens + reasoningTokens
-    const lastCallTotal = mostRecentInput + mostRecentCacheRead + mostRecentCacheWrite + mostRecentOutput + mostRecentReasoning
-    
-    lines.push(`═══════════════════════════════════════════════════════════════════════════`)
-    lines.push(`SUMMARY`)
-    lines.push(`─────────────────────────────────────────────────────────────────────────`)
+    // 6. SESSION COST / ESTIMATED SESSION COST
     lines.push(``)
-    lines.push(`Last API Call:        ${this.formatNumber(lastCallTotal).padStart(10)} tokens`)
-    lines.push(`Session Total:        ${this.formatNumber(sessionTotal).padStart(10)} tokens`)
-    lines.push(`API Calls Made:       ${assistantMessageCount.toString().padStart(10)}`)
     lines.push(`═══════════════════════════════════════════════════════════════════════════`)
-    lines.push(``)
-
     if (cost.isSubscription) {
       lines.push(`ESTIMATED SESSION COST (API Key Pricing)`)
       lines.push(`─────────────────────────────────────────────────────────────────────────`)
@@ -1158,7 +1175,6 @@ class OutputFormatter {
       lines.push(``)
       lines.push(`─────────────────────────────────────────────────────────────────────────`)
       lines.push(`ACTUAL COST (from API):  $${cost.apiSessionCost.toFixed(4)}`)
-      
       const diff = Math.abs(cost.apiSessionCost - cost.estimatedSessionCost)
       const diffPercent = cost.apiSessionCost > 0 ? (diff / cost.apiSessionCost) * 100 : 0
       if (diffPercent > 5) {
@@ -1169,44 +1185,18 @@ class OutputFormatter {
       lines.push(`and 200K+ context adjustments.`)
     }
 
-    if (toolEntries.length > 0) {
-      const toolsTotalTokens = inputCategories.find(c => c.label === "TOOLS")?.tokens || 0
-      
-      lines.push(``)
-      lines.push(`TOOL USAGE BREAKDOWN`)
-      lines.push(`─────────────────────────────────────────────────────────────────────────`)
-
-      for (const tool of toolEntries) {
-        const barLine = this.formatCategoryBar(tool.label, tool.tokens, toolsTotalTokens, this.TOOL_LABEL_WIDTH)
-        if (barLine) {
-          const calls = `${tool.calls}x`.padStart(5)
-          lines.push(`${barLine} ${calls}`)
-        }
-      }
-    }
-
-    if (topEntries.length > 0) {
-      lines.push(``)
-      lines.push(`TOP CONTRIBUTORS`)
-      lines.push(`─────────────────────────────────────────────────────────────────────────`)
-
-      for (const entry of topEntries) {
-        const percentage = ((entry.tokens / totalTokens) * 100).toFixed(1)
-        const label = `• ${entry.label}`.padEnd(this.TOP_CONTRIBUTOR_LABEL_WIDTH)
-        const formattedTokens = this.formatNumber(entry.tokens)
-        const tokens = `${formattedTokens} tokens (${percentage}%)`
-        lines.push(`${label} ${tokens}`)
-      }
-    }
-
+    // 7. SUBAGENT COSTS (if any)
     if (subagentAnalysis && subagentAnalysis.subagents.length > 0) {
+      const subagentLabelWidth = 25
+      const subagentTotalCost = cost.isSubscription 
+        ? subagentAnalysis.totalEstimatedCost 
+        : subagentAnalysis.totalApiCost
+
       lines.push(``)
       lines.push(`═══════════════════════════════════════════════════════════════════════════`)
       lines.push(`SUBAGENT COSTS (${subagentAnalysis.subagents.length} child sessions, ${subagentAnalysis.totalApiCalls} API calls)`)
       lines.push(`─────────────────────────────────────────────────────────────────────────`)
       lines.push(``)
-
-      const subagentLabelWidth = 25
       for (const subagent of subagentAnalysis.subagents) {
         const label = `${subagent.agentType}`.padEnd(subagentLabelWidth)
         const costStr = cost.isSubscription 
@@ -1215,28 +1205,32 @@ class OutputFormatter {
         const tokensStr = `(${this.formatNumber(subagent.totalTokens)} tokens, ${subagent.assistantMessageCount} calls)`
         lines.push(`  ${label} ${costStr.padStart(10)}  ${tokensStr}`)
       }
-
       lines.push(`─────────────────────────────────────────────────────────────────────────`)
+      lines.push(`Subagent Total:${' '.repeat(subagentLabelWidth - 14)} $${subagentTotalCost.toFixed(4)}  (${this.formatNumber(subagentAnalysis.totalTokens)} tokens, ${subagentAnalysis.totalApiCalls} calls)`)
+    }
+
+    // 8. SUMMARY (always last)
+    lines.push(``)
+    lines.push(`═══════════════════════════════════════════════════════════════════════════`)
+    lines.push(`SUMMARY`)
+    lines.push(`─────────────────────────────────────────────────────────────────────────`)
+    lines.push(``)
+    lines.push(`                          Cost        Tokens          API Calls`)
+
+    if (subagentAnalysis && subagentAnalysis.subagents.length > 0) {
       const subagentTotalCost = cost.isSubscription 
         ? subagentAnalysis.totalEstimatedCost 
         : subagentAnalysis.totalApiCost
-      lines.push(`Subagent Total:${' '.repeat(subagentLabelWidth - 14)} $${subagentTotalCost.toFixed(4)}  (${this.formatNumber(subagentAnalysis.totalTokens)} tokens, ${subagentAnalysis.totalApiCalls} calls)`)
-      lines.push(``)
-      lines.push(`═══════════════════════════════════════════════════════════════════════════`)
-      lines.push(`GRAND TOTAL (Main + Subagents)`)
-      lines.push(`─────────────────────────────────────────────────────────────────────────`)
-      lines.push(``)
-
-      const mainCost = cost.isSubscription ? cost.estimatedSessionCost : cost.apiSessionCost
       const grandTotalCost = mainCost + subagentTotalCost
-      const mainTokens = inputTokens + cacheReadTokens + cacheWriteTokens + outputTokens + reasoningTokens
-      const grandTotalTokens = mainTokens + subagentAnalysis.totalTokens
+      const grandTotalTokens = sessionTotal + subagentAnalysis.totalTokens
       const grandTotalApiCalls = assistantMessageCount + subagentAnalysis.totalApiCalls
 
-      lines.push(`  Main session:${' '.repeat(subagentLabelWidth - 14)} $${mainCost.toFixed(4)}  (${this.formatNumber(mainTokens)} tokens, ${assistantMessageCount} calls)`)
-      lines.push(`  Subagents:${' '.repeat(subagentLabelWidth - 11)} $${subagentTotalCost.toFixed(4)}  (${this.formatNumber(subagentAnalysis.totalTokens)} tokens, ${subagentAnalysis.totalApiCalls} calls)`)
+      lines.push(`  Main session:      $${mainCost.toFixed(4).padStart(10)}    ${this.formatNumber(sessionTotal).padStart(10)}         ${assistantMessageCount.toString().padStart(5)}`)
+      lines.push(`  Subagents:         $${subagentTotalCost.toFixed(4).padStart(10)}    ${this.formatNumber(subagentAnalysis.totalTokens).padStart(10)}         ${subagentAnalysis.totalApiCalls.toString().padStart(5)}`)
       lines.push(`─────────────────────────────────────────────────────────────────────────`)
-      lines.push(`TOTAL:${' '.repeat(subagentLabelWidth - 5)} $${grandTotalCost.toFixed(4)}  (${this.formatNumber(grandTotalTokens)} tokens, ${grandTotalApiCalls} calls)`)
+      lines.push(`  TOTAL:             $${grandTotalCost.toFixed(4).padStart(10)}    ${this.formatNumber(grandTotalTokens).padStart(10)}         ${grandTotalApiCalls.toString().padStart(5)}`)
+    } else {
+      lines.push(`  Session:           $${mainCost.toFixed(4).padStart(10)}    ${this.formatNumber(sessionTotal).padStart(10)}         ${assistantMessageCount.toString().padStart(5)}`)
     }
 
     lines.push(``)
@@ -1343,4 +1337,3 @@ export const TokenAnalyzerPlugin: Plugin = async ({ client }) => {
     },
   }
 }
-
