@@ -59,6 +59,21 @@ cat token-usage-output.txt
 - **Visual Charts**: Easy-to-read ASCII bar charts with percentages and token counts
 - **Smart Inference**: Automatically infers system prompts from API telemetry (since they're not exposed in session messages)
 
+### Context Breakdown Analysis (New in v1.4.0)
+- **System Prompt Components**: See token distribution across base prompt, tool definitions, environment context, project tree, and custom instructions
+- **Automatic Estimation**: Estimates breakdown from `cache_write` tokens when system prompt content isn't directly available
+- **Tool Count**: Shows how many tools are loaded and their combined token cost
+
+### Tool Definition Cost Estimates (New in v1.4.0)
+- **Per-Tool Estimates**: Lists all enabled tools with estimated schema token costs
+- **Argument Analysis**: Infers argument count and complexity from actual tool calls in the session
+- **Complexity Detection**: Distinguishes between simple arguments and complex ones (arrays/objects)
+
+### Cache Efficiency Metrics (New in v1.4.0)
+- **Cache Hit Rate**: Visual display of cache read vs fresh input token distribution
+- **Cost Savings**: Calculates actual savings from prompt caching
+- **Effective Rate**: Shows what you're actually paying per token vs standard rates
+
 ### Accurate Cost Tracking
 - **41+ Models Supported**: Comprehensive pricing database for Claude, GPT, DeepSeek, Llama, Mistral, and more
 - **Cache-Aware Pricing**: Properly handles cache read/write tokens with discounted rates
@@ -76,6 +91,7 @@ cat token-usage-output.txt
 - **Top Contributors**: Identify the biggest token consumers
 - **Model Normalization**: Handles `provider/model` format automatically
 - **Multi-Tokenizer Support**: Uses official tokenizers (tiktoken for OpenAI, transformers for others)
+- **Configurable Sections**: Enable/disable analysis features via `tokenscope-config.json`
 
 ## Example Output
 
@@ -163,6 +179,53 @@ Note: This estimate uses standard API pricing from models.json.
 Actual API costs may vary based on provider and context size.
 
 ═══════════════════════════════════════════════════════════════════════════
+CONTEXT BREAKDOWN (Estimated from cache_write tokens)
+─────────────────────────────────────────────────────────────────────────
+
+  Base System Prompt   ████████████░░░░░░░░░░░░░░░░░░   ~42,816 tokens
+  Tool Definitions (14)██████░░░░░░░░░░░░░░░░░░░░░░░░    ~4,900 tokens
+  Environment Context  █░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      ~150 tokens
+  Project Tree         ████░░░░░░░░░░░░░░░░░░░░░░░░░░    ~4,000 tokens
+  ───────────────────────────────────────────────────────────────────────
+  Total Cached Context:                                  ~51,866 tokens
+
+  Note: Breakdown estimated from first cache_write. Actual distribution may vary.
+
+═══════════════════════════════════════════════════════════════════════════
+TOOL DEFINITION COSTS (Estimated from argument analysis)
+─────────────────────────────────────────────────────────────────────────
+
+  Tool                Est. Tokens   Args   Complexity
+  ───────────────────────────────────────────────────────────────────────
+  task                       ~480      3   complex (arrays/objects)
+  batch                      ~410      1   complex (arrays/objects)
+  edit                       ~370      4   simple
+  read                       ~340      3   simple
+  bash                       ~340      3   simple
+  ───────────────────────────────────────────────────────────────────────
+  Total:                   ~4,520 tokens (14 enabled tools)
+
+  Note: Estimates inferred from tool call arguments in this session.
+        Actual schema tokens may vary +/-20%.
+
+═══════════════════════════════════════════════════════════════════════════
+CACHE EFFICIENCY
+─────────────────────────────────────────────────────────────────────────
+
+  Token Distribution:
+    Cache Read:           320,479 tokens   ████████████████████████████░░  86.2%
+    Fresh Input:           51,320 tokens   ████░░░░░░░░░░░░░░░░░░░░░░░░░░  13.8%
+  ───────────────────────────────────────────────────────────────────────
+  Cache Hit Rate:      86.2%
+
+  Cost Analysis (claude-opus-4-5 @ $5.00/M input, $0.50/M cache read):
+    Without caching:   $1.8590  (371,799 tokens x $5.00/M)
+    With caching:      $0.4169  (fresh x $5.00/M + cached x $0.50/M)
+  ───────────────────────────────────────────────────────────────────────
+  Cost Savings:        $1.4421  (77.6% reduction)
+  Effective Rate:      $1.12/M tokens  (vs. $5.00/M standard)
+
+═══════════════════════════════════════════════════════════════════════════
 SUBAGENT COSTS (4 child sessions, 23 API calls)
 ─────────────────────────────────────────────────────────────────────────
 
@@ -232,6 +295,21 @@ Save the file and restart OpenCode. The plugin will automatically use the new pr
 ### Update Existing Model Pricing
 
 Simply edit the values in `models.json` and restart OpenCode. No code changes needed!
+
+### Configure Analysis Features
+
+Edit `~/.config/opencode/plugin/tokenscope-config.json` to enable/disable sections:
+
+```json
+{
+  "enableContextBreakdown": true,
+  "enableToolSchemaEstimation": true,
+  "enableCacheEfficiency": true,
+  "enableSubagentAnalysis": true
+}
+```
+
+Set any option to `false` to hide that section from the output. All features are enabled by default.
 
 ## How It Works
 
@@ -333,18 +411,20 @@ The plugin uses API telemetry (ground truth). If counts seem off:
 
 ```
 plugin/
-├── tokenscope.ts        # Main entry point - Plugin export
+├── tokenscope.ts           # Main entry point - Plugin export
 ├── tokenscope-lib/
-│   ├── types.ts         # All interfaces and type definitions
-│   ├── config.ts        # Constants, model maps, pricing loader
-│   ├── tokenizer.ts     # TokenizerManager class
-│   ├── analyzer.ts      # ModelResolver, ContentCollector, TokenAnalysisEngine
-│   ├── cost.ts          # CostCalculator class
-│   ├── subagent.ts      # SubagentAnalyzer class
-│   └── formatter.ts     # OutputFormatter class
-├── models.json          # Pricing data for 41+ models
-├── package.json         # Plugin metadata
-└── install.sh           # Installation script
+│   ├── types.ts            # All interfaces and type definitions
+│   ├── config.ts           # Constants, model maps, pricing loader
+│   ├── tokenizer.ts        # TokenizerManager class
+│   ├── analyzer.ts         # ModelResolver, ContentCollector, TokenAnalysisEngine
+│   ├── cost.ts             # CostCalculator class
+│   ├── subagent.ts         # SubagentAnalyzer class
+│   ├── formatter.ts        # OutputFormatter class
+│   └── context.ts          # ContextAnalyzer class (context breakdown, tool estimates, cache efficiency)
+├── models.json             # Pricing data for 41+ models
+├── tokenscope-config.json  # Feature toggles configuration
+├── package.json            # Plugin metadata
+└── install.sh              # Installation script
 ```
 
 ### Core Components
@@ -355,7 +435,8 @@ plugin/
 4. **TokenAnalysisEngine** (`tokenscope-lib/analyzer.ts`): Counts tokens and applies API telemetry adjustments
 5. **CostCalculator** (`tokenscope-lib/cost.ts`): Calculates costs from pricing database with cache-aware pricing
 6. **SubagentAnalyzer** (`tokenscope-lib/subagent.ts`): Recursively fetches and analyzes child sessions from Task tool calls
-7. **OutputFormatter** (`tokenscope-lib/formatter.ts`): Generates visual reports with charts and summaries
+7. **ContextAnalyzer** (`tokenscope-lib/context.ts`): Analyzes context breakdown, tool schema estimates, and cache efficiency
+8. **OutputFormatter** (`tokenscope-lib/formatter.ts`): Generates visual reports with charts and summaries
 
 ## Privacy & Security
 
@@ -397,6 +478,7 @@ plugin/
    curl -O https://raw.githubusercontent.com/ramtinJ95/opencode-tokenscope/main/plugin/tokenscope.ts
    curl -O https://raw.githubusercontent.com/ramtinJ95/opencode-tokenscope/main/plugin/models.json
    curl -O https://raw.githubusercontent.com/ramtinJ95/opencode-tokenscope/main/plugin/package.json
+   curl -O https://raw.githubusercontent.com/ramtinJ95/opencode-tokenscope/main/plugin/tokenscope-config.json
    cd tokenscope-lib
    curl -O https://raw.githubusercontent.com/ramtinJ95/opencode-tokenscope/main/plugin/tokenscope-lib/types.ts
    curl -O https://raw.githubusercontent.com/ramtinJ95/opencode-tokenscope/main/plugin/tokenscope-lib/config.ts
@@ -405,6 +487,7 @@ plugin/
    curl -O https://raw.githubusercontent.com/ramtinJ95/opencode-tokenscope/main/plugin/tokenscope-lib/cost.ts
    curl -O https://raw.githubusercontent.com/ramtinJ95/opencode-tokenscope/main/plugin/tokenscope-lib/subagent.ts
    curl -O https://raw.githubusercontent.com/ramtinJ95/opencode-tokenscope/main/plugin/tokenscope-lib/formatter.ts
+   curl -O https://raw.githubusercontent.com/ramtinJ95/opencode-tokenscope/main/plugin/tokenscope-lib/context.ts
    ```
 
 3. **Download command file**:
