@@ -14,6 +14,12 @@ Then restart OpenCode and run `/tokenscope`
 
 ## Updating
 
+**Option 1: Local script** (if you have the plugin installed)
+```bash
+bash ~/.config/opencode/plugin/install.sh --update
+```
+
+**Option 2: Remote script** (always works)
 ```bash
 curl -sSL https://raw.githubusercontent.com/ramtinJ95/opencode-tokenscope/main/plugin/install.sh | bash -s -- --update
 ```

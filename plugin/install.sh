@@ -187,6 +187,9 @@ else
     exit 1
 fi
 
+# Make install.sh executable for future local updates
+chmod +x "$OPENCODE_DIR/plugin/install.sh"
+
 # Get installed version
 INSTALLED_VERSION=$(grep -o '"version": *"[^"]*"' "$OPENCODE_DIR/plugin/package.json" | cut -d'"' -f4)
 
