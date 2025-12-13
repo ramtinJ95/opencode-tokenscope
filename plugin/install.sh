@@ -86,6 +86,7 @@ echo_info "All prerequisites met"
 # Create plugin and command directories
 echo_step "2/5 Preparing directories..."
 mkdir -p "$OPENCODE_DIR/plugin"
+mkdir -p "$OPENCODE_DIR/plugin/tokenscope-lib"
 mkdir -p "$OPENCODE_DIR/command"
 echo_info "Directories ready"
 
@@ -94,6 +95,13 @@ echo_step "3/5 Downloading plugin files..."
 
 FILES=(
     "plugin/tokenscope.ts"
+    "plugin/tokenscope-lib/types.ts"
+    "plugin/tokenscope-lib/config.ts"
+    "plugin/tokenscope-lib/tokenizer.ts"
+    "plugin/tokenscope-lib/analyzer.ts"
+    "plugin/tokenscope-lib/cost.ts"
+    "plugin/tokenscope-lib/subagent.ts"
+    "plugin/tokenscope-lib/formatter.ts"
     "plugin/models.json"
     "plugin/package.json"
     "plugin/install.sh"
@@ -107,9 +115,11 @@ for file in "${FILES[@]}"; do
     echo_info "Downloading $filename..."
     
     if curl -fsSL "$REPO_URL/raw/main/$file" -o "$TEMP_DIR/$filename" 2>/dev/null; then
-        # Move to appropriate directory
+        # Move to appropriate directory based on path
         if [ "$dir" = "plugin" ]; then
             mv "$TEMP_DIR/$filename" "$OPENCODE_DIR/plugin/$filename"
+        elif [ "$dir" = "plugin/tokenscope-lib" ]; then
+            mv "$TEMP_DIR/$filename" "$OPENCODE_DIR/plugin/tokenscope-lib/$filename"
         else
             mv "$TEMP_DIR/$filename" "$OPENCODE_DIR/command/$filename"
         fi
@@ -149,6 +159,13 @@ echo_step "5/5 Verifying installation..."
 
 REQUIRED_FILES=(
     "$OPENCODE_DIR/plugin/tokenscope.ts"
+    "$OPENCODE_DIR/plugin/tokenscope-lib/types.ts"
+    "$OPENCODE_DIR/plugin/tokenscope-lib/config.ts"
+    "$OPENCODE_DIR/plugin/tokenscope-lib/tokenizer.ts"
+    "$OPENCODE_DIR/plugin/tokenscope-lib/analyzer.ts"
+    "$OPENCODE_DIR/plugin/tokenscope-lib/cost.ts"
+    "$OPENCODE_DIR/plugin/tokenscope-lib/subagent.ts"
+    "$OPENCODE_DIR/plugin/tokenscope-lib/formatter.ts"
     "$OPENCODE_DIR/plugin/models.json"
     "$OPENCODE_DIR/plugin/node_modules/js-tiktoken"
     "$OPENCODE_DIR/plugin/node_modules/@huggingface/transformers"
@@ -194,4 +211,3 @@ echo ""
 echo_info "For help and documentation, visit:"
 echo_info "$REPO_URL"
 echo ""
-
