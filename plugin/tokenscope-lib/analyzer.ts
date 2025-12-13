@@ -96,11 +96,23 @@ export class ContentCollector {
     const prompts = new Map<string, string>()
 
     for (const message of messages) {
+      // Check system role messages
       if (message.info.role === "system") {
         const content = this.extractText(message.parts)
         if (content) prompts.set(content, content)
       }
 
+      // Check user messages for system field (OpenCode stores system prompt here)
+      if (message.info.role === "user") {
+        const userInfo = message.info as any
+        // System prompt can be a string on user messages
+        if (userInfo.system && typeof userInfo.system === "string") {
+          const trimmed = userInfo.system.trim()
+          if (trimmed) prompts.set(trimmed, trimmed)
+        }
+      }
+
+      // Check assistant messages for system array (legacy format)
       if (message.info.role === "assistant") {
         for (const prompt of message.info.system ?? []) {
           const trimmed = (prompt ?? "").trim()

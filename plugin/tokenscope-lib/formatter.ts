@@ -1,6 +1,16 @@
 // OutputFormatter - generates visual reports from token analysis
 
-import type { TokenAnalysis, CategoryEntry, CostEstimate, SubagentAnalysis } from "./types"
+import type {
+  TokenAnalysis,
+  CategoryEntry,
+  CostEstimate,
+  SubagentAnalysis,
+  ContextAnalysis,
+  ToolDefinitionsBreakdown,
+  SystemPromptBreakdown,
+  ContextEfficiency,
+  RequestComposition,
+} from "./types"
 import { CostCalculator } from "./cost"
 
 export class OutputFormatter {
@@ -9,8 +19,13 @@ export class OutputFormatter {
   private readonly CATEGORY_LABEL_WIDTH = 9
   private readonly TOOL_LABEL_WIDTH = 20
   private readonly TOP_CONTRIBUTOR_LABEL_WIDTH = 30
+  private readonly CONTEXT_LABEL_WIDTH = 25
 
   constructor(private costCalculator: CostCalculator) {}
+
+  private readonly DOUBLE_LINE = "\u2550".repeat(75)
+  private readonly SINGLE_LINE = "\u2500".repeat(73)
+  private readonly SHORT_LINE = "\u2500".repeat(37)
 
   private formatCategoryBar(
     label: string,
@@ -85,7 +100,8 @@ export class OutputFormatter {
       topEntries,
       toolEntries,
       costEstimate,
-      analysis.subagentAnalysis
+      analysis.subagentAnalysis,
+      analysis.contextAnalysis
     )
   }
 
@@ -109,18 +125,34 @@ export class OutputFormatter {
     topEntries: CategoryEntry[],
     toolEntries: Array<{ label: string; tokens: number; calls: number }>,
     cost: CostEstimate,
-    subagentAnalysis?: SubagentAnalysis
+    subagentAnalysis?: SubagentAnalysis,
+    contextAnalysis?: ContextAnalysis
   ): string {
     const lines: string[] = []
     const sessionTotal = inputTokens + cacheReadTokens + cacheWriteTokens + outputTokens + reasoningTokens
     const mainCost = cost.isSubscription ? cost.estimatedSessionCost : cost.apiSessionCost
 
     // Header
-    lines.push(`\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550`)
+    lines.push(this.DOUBLE_LINE)
     lines.push(`Token Analysis: Session ${sessionID}`)
     lines.push(`Model: ${modelName}`)
-    lines.push(`\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550`)
+    if (contextAnalysis) {
+      lines.push(`Provider: ${contextAnalysis.providerID}`)
+    }
+    lines.push(this.DOUBLE_LINE)
     lines.push(``)
+
+    // NEW SECTIONS: Context Analysis (Tool Definitions, System Prompt, Efficiency, Request Composition)
+    if (contextAnalysis) {
+      lines.push(...this.formatToolDefinitionsSection(contextAnalysis.toolDefinitions))
+      lines.push(``)
+      lines.push(...this.formatSystemPromptSection(contextAnalysis.systemPrompt))
+      lines.push(``)
+      lines.push(...this.formatRequestCompositionSection(contextAnalysis.requestComposition))
+      lines.push(``)
+      lines.push(...this.formatContextEfficiencySection(contextAnalysis.efficiency))
+      lines.push(``)
+    }
 
     // 1. TOKEN BREAKDOWN BY CATEGORY
     lines.push(`TOKEN BREAKDOWN BY CATEGORY`)
@@ -360,5 +392,220 @@ export class OutputFormatter {
 
   private formatNumber(value: number): string {
     return new Intl.NumberFormat("en-US").format(value)
+  }
+
+  // ============================================================================
+  // NEW CONTEXT ANALYSIS SECTIONS
+  // ============================================================================
+
+  private formatToolDefinitionsSection(toolDefs: ToolDefinitionsBreakdown): string[] {
+    const lines: string[] = []
+
+    lines.push(this.DOUBLE_LINE)
+    lines.push(`TOOL DEFINITIONS (Static Context)`)
+    lines.push(this.SINGLE_LINE)
+    lines.push(``)
+    lines.push(`These tool schemas are sent with EVERY API request. They define what`)
+    lines.push(`capabilities the AI has access to and consume tokens on each call.`)
+    lines.push(``)
+
+    if (toolDefs.tools.length === 0) {
+      lines.push(`  No tool definitions available (API may not support this endpoint)`)
+      return lines
+    }
+
+    lines.push(`  Tool Count: ${toolDefs.toolCount} tools registered`)
+    lines.push(``)
+
+    // Show breakdown by description vs schema
+    lines.push(`  Token Breakdown:`)
+    lines.push(`    Descriptions:    ${this.formatNumber(toolDefs.totalDescriptionTokens).padStart(10)} tokens`)
+    lines.push(`    JSON Schemas:    ${this.formatNumber(toolDefs.totalSchemaTokens).padStart(10)} tokens`)
+    lines.push(`    ${this.SHORT_LINE}`)
+    lines.push(`    Total:           ${this.formatNumber(toolDefs.totalTokens).padStart(10)} tokens`)
+    lines.push(``)
+
+    // Show individual tools with bars
+    lines.push(`  Per-Tool Breakdown (sorted by token count):`)
+    lines.push(``)
+
+    const maxTools = 10 // Show top 10 tools
+    const displayTools = toolDefs.tools.slice(0, maxTools)
+
+    for (const tool of displayTools) {
+      const barLine = this.formatCategoryBar(tool.id, tool.totalTokens, toolDefs.totalTokens, this.CONTEXT_LABEL_WIDTH)
+      if (barLine) {
+        lines.push(`  ${barLine}`)
+      }
+    }
+
+    if (toolDefs.tools.length > maxTools) {
+      const remaining = toolDefs.tools.length - maxTools
+      const remainingTokens = toolDefs.tools.slice(maxTools).reduce((sum, t) => sum + t.totalTokens, 0)
+      lines.push(`  ... and ${remaining} more tools (${this.formatNumber(remainingTokens)} tokens)`)
+    }
+
+    return lines
+  }
+
+  private formatSystemPromptSection(systemPrompt: SystemPromptBreakdown): string[] {
+    const lines: string[] = []
+
+    lines.push(this.DOUBLE_LINE)
+    lines.push(`SYSTEM PROMPT BREAKDOWN`)
+    lines.push(this.SINGLE_LINE)
+    lines.push(``)
+    lines.push(`The system prompt defines the AI's identity, capabilities, and behavior.`)
+    lines.push(`It is sent with every request and typically cached for efficiency.`)
+    lines.push(``)
+
+    if (systemPrompt.sections.length === 0 || systemPrompt.totalTokens === 0) {
+      lines.push(`  System prompt not available in message data.`)
+      lines.push(`  (The prompt may be injected server-side or not exposed via API)`)
+      return lines
+    }
+
+    lines.push(`  Total System Prompt: ${this.formatNumber(systemPrompt.totalTokens)} tokens`)
+    lines.push(``)
+    lines.push(`  Section Breakdown:`)
+    lines.push(``)
+
+    for (const section of systemPrompt.sections) {
+      const percentage = ((section.tokens / systemPrompt.totalTokens) * 100).toFixed(1)
+      const label = section.label.padEnd(this.CONTEXT_LABEL_WIDTH)
+      const tokens = this.formatNumber(section.tokens).padStart(8)
+      lines.push(`  ${label} ${tokens} tokens (${percentage.padStart(5)}%)`)
+      lines.push(`    \u2514\u2500 ${section.description}`)
+    }
+
+    return lines
+  }
+
+  private formatRequestCompositionSection(composition: RequestComposition): string[] {
+    const lines: string[] = []
+
+    lines.push(this.DOUBLE_LINE)
+    lines.push(`MOST RECENT REQUEST COMPOSITION`)
+    lines.push(this.SINGLE_LINE)
+    lines.push(``)
+    lines.push(`What was sent to the API in the most recent request:`)
+    lines.push(``)
+
+    if (composition.totalRequest === 0) {
+      lines.push(`  No request data available yet.`)
+      return lines
+    }
+
+    // Create visual bar chart
+    const components = [
+      { label: "Tool Definitions", tokens: composition.toolDefinitions, desc: "JSON schemas for all available tools" },
+      { label: "System Prompt", tokens: composition.systemPrompt, desc: "AI identity, rules, and instructions" },
+      {
+        label: "Conversation History",
+        tokens: composition.conversationHistory,
+        desc: "Previous messages in this session",
+      },
+      { label: "User Message", tokens: composition.userMessage, desc: "Your most recent message" },
+    ]
+
+    for (const comp of components) {
+      if (comp.tokens > 0) {
+        const barLine = this.formatCategoryBar(comp.label, comp.tokens, composition.totalRequest, this.CONTEXT_LABEL_WIDTH)
+        if (barLine) {
+          lines.push(`  ${barLine}`)
+        }
+      }
+    }
+
+    lines.push(``)
+    lines.push(`  ${this.SHORT_LINE}`)
+    lines.push(`  Total Request Size:     ${this.formatNumber(composition.totalRequest).padStart(10)} tokens`)
+    lines.push(``)
+
+    // Add explanation
+    const staticTokens = composition.toolDefinitions + composition.systemPrompt
+    const dynamicTokens = composition.conversationHistory + composition.userMessage
+    const staticPercent = composition.totalRequest > 0 ? ((staticTokens / composition.totalRequest) * 100).toFixed(1) : "0"
+
+    lines.push(`  Static Context (cached): ${this.formatNumber(staticTokens).padStart(10)} tokens (${staticPercent}%)`)
+    lines.push(`  Dynamic Content:         ${this.formatNumber(dynamicTokens).padStart(10)} tokens`)
+    lines.push(``)
+    lines.push(`  Note: Static context is typically served from cache at 1/10th the cost.`)
+
+    return lines
+  }
+
+  private formatContextEfficiencySection(efficiency: ContextEfficiency): string[] {
+    const lines: string[] = []
+
+    lines.push(this.DOUBLE_LINE)
+    lines.push(`CONTEXT CACHING EFFICIENCY`)
+    lines.push(this.SINGLE_LINE)
+    lines.push(``)
+    lines.push(`How effectively caching is reducing your API costs:`)
+    lines.push(``)
+
+    if (efficiency.cacheReadTokens === 0 && efficiency.freshInputTokens === 0) {
+      lines.push(`  No caching data available for this session.`)
+      return lines
+    }
+
+    // Visual representation of cache vs fresh
+    const totalInput = efficiency.freshInputTokens + efficiency.cacheReadTokens
+    const cacheHitPercent = efficiency.cacheHitRate.toFixed(1)
+    const cacheMissPercent = (100 - efficiency.cacheHitRate).toFixed(1)
+
+    lines.push(`  Most Recent Request Input Breakdown:`)
+    lines.push(``)
+    lines.push(`    Fresh Input (full price):  ${this.formatNumber(efficiency.freshInputTokens).padStart(10)} tokens (${cacheMissPercent}%)`)
+    lines.push(`    Cache Read (1/10 price):   ${this.formatNumber(efficiency.cacheReadTokens).padStart(10)} tokens (${cacheHitPercent}%)`)
+    if (efficiency.cacheWriteTokens > 0) {
+      lines.push(`    Cache Write (1.25x price): ${this.formatNumber(efficiency.cacheWriteTokens).padStart(10)} tokens`)
+    }
+    lines.push(`    ${this.SHORT_LINE}`)
+    lines.push(`    Total Input:               ${this.formatNumber(totalInput).padStart(10)} tokens`)
+    lines.push(``)
+
+    // Cache efficiency visualization
+    const cacheBarWidth = Math.round((efficiency.cacheHitRate / 100) * this.BAR_WIDTH)
+    const freshBarWidth = this.BAR_WIDTH - cacheBarWidth
+    const cacheBar = "\u2588".repeat(cacheBarWidth) + "\u2591".repeat(freshBarWidth)
+
+    lines.push(`  Cache Hit Rate: [${cacheBar}] ${cacheHitPercent}%`)
+    lines.push(``)
+
+    // Cost savings explanation
+    const totalWithWrite = totalInput + efficiency.cacheWriteTokens
+    const effectiveTokens = Math.round(
+      efficiency.freshInputTokens + efficiency.cacheReadTokens * 0.1 + efficiency.cacheWriteTokens * 1.25
+    )
+
+    lines.push(`  Cost Impact:`)
+    lines.push(`    Without caching: ${this.formatNumber(totalWithWrite)} tokens at full price`)
+    if (efficiency.cacheWriteTokens > 0) {
+      lines.push(
+        `    With caching:    ${this.formatNumber(efficiency.freshInputTokens)} @ 100% + ${this.formatNumber(efficiency.cacheReadTokens)} @ 10% + ${this.formatNumber(efficiency.cacheWriteTokens)} @ 125%`
+      )
+      lines.push(`                     = ~${this.formatNumber(effectiveTokens)} effective tokens`)
+    } else {
+      lines.push(
+        `    With caching:    ${this.formatNumber(efficiency.freshInputTokens)} full + ${this.formatNumber(efficiency.cacheReadTokens)} @ 10% = ~${this.formatNumber(effectiveTokens)} effective tokens`
+      )
+    }
+    lines.push(``)
+    lines.push(`  Effective Cost Reduction: ${efficiency.effectiveCostReduction.toFixed(1)}%`)
+    lines.push(``)
+
+    if (efficiency.cacheHitRate >= 80) {
+      lines.push(`  \u2713 Excellent caching! Your static context is being efficiently reused.`)
+    } else if (efficiency.cacheHitRate >= 50) {
+      lines.push(`  \u2713 Good caching. Consider keeping conversations shorter for better cache hits.`)
+    } else if (efficiency.cacheHitRate > 0) {
+      lines.push(`  ! Low cache hit rate. Long conversations may cause cache misses.`)
+    } else {
+      lines.push(`  ! No cache hits detected. This may be the first request or cache expired.`)
+    }
+
+    return lines
   }
 }

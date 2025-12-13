@@ -59,6 +59,12 @@ cat token-usage-output.txt
 - **Visual Charts**: Easy-to-read ASCII bar charts with percentages and token counts
 - **Smart Inference**: Automatically infers system prompts from API telemetry (since they're not exposed in session messages)
 
+### Context Analysis (New in v1.4.0)
+- **Tool Definitions Breakdown**: See exactly how many tokens each tool's description and JSON schema consume
+- **System Prompt Sections**: Detailed breakdown of system prompt components (identity, rules, environment, custom instructions)
+- **Request Composition**: Visual breakdown of what's sent with each API request (tools, system, conversation, user message)
+- **Cache Efficiency Metrics**: See your cache hit rate and effective cost reduction from caching
+
 ### Accurate Cost Tracking
 - **41+ Models Supported**: Comprehensive pricing database for Claude, GPT, DeepSeek, Llama, Mistral, and more
 - **Cache-Aware Pricing**: Properly handles cache read/write tokens with discounted rates
@@ -82,8 +88,96 @@ cat token-usage-output.txt
 ```
 ═══════════════════════════════════════════════════════════════════════════
 Token Analysis: Session ses_50c712089ffeshuuuJPmOoXCPX
-Model: claude-opus-4-5
+Model: claude-sonnet-4-20250514
+Provider: anthropic
 ═══════════════════════════════════════════════════════════════════════════
+
+═══════════════════════════════════════════════════════════════════════════
+TOOL DEFINITIONS (Static Context)
+─────────────────────────────────────────────────────────────────────────
+
+These tool schemas are sent with EVERY API request. They define what
+capabilities the AI has access to and consume tokens on each call.
+
+  Tool Count: 14 tools registered
+
+  Token Breakdown:
+    Descriptions:         4,850 tokens
+    JSON Schemas:           892 tokens
+    ─────────────────────────────────────
+    Total:                5,742 tokens
+
+  Per-Tool Breakdown (sorted by token count):
+  bash                      ████████████████░░░░░░░░░░░░░░  52.3% (3,003)
+  task                      ████░░░░░░░░░░░░░░░░░░░░░░░░░░  13.5% (775)
+  read                      ███░░░░░░░░░░░░░░░░░░░░░░░░░░░  10.2% (586)
+  edit                      ██░░░░░░░░░░░░░░░░░░░░░░░░░░░░   7.8% (448)
+  todowrite                 ██░░░░░░░░░░░░░░░░░░░░░░░░░░░░   6.1% (350)
+  ...
+
+═══════════════════════════════════════════════════════════════════════════
+SYSTEM PROMPT BREAKDOWN
+─────────────────────────────────────────────────────────────────────────
+
+The system prompt defines the AI's identity, capabilities, and behavior.
+It is sent with every request and typically cached for efficiency.
+
+  Total System Prompt: 8,234 tokens
+
+  Section Breakdown:
+
+  Tool Usage Policy             2,145 tokens (26.1%)
+    └─ Rules for when and how to use available tools
+  Task Management               1,890 tokens (23.0%)
+    └─ Instructions for using todo tools and tracking progress
+  Identity & Role               1,456 tokens (17.7%)
+    └─ Defines who the AI is and its primary purpose
+  Environment Info                525 tokens ( 6.4%)
+    └─ Current working directory, platform, date, git status
+  Custom Instructions             273 tokens ( 3.3%)
+    └─ User-defined instructions from AGENTS.md or CLAUDE.md
+
+═══════════════════════════════════════════════════════════════════════════
+MOST RECENT REQUEST COMPOSITION
+─────────────────────────────────────────────────────────────────────────
+
+What was sent to the API in the most recent request:
+
+  Tool Definitions          ██████████░░░░░░░░░░░░░░░░░░░░  33.2% (5,742)
+  System Prompt             ████████████░░░░░░░░░░░░░░░░░░  47.6% (8,234)
+  Conversation History      █████░░░░░░░░░░░░░░░░░░░░░░░░░  16.8% (2,905)
+  User Message              ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   2.4% (415)
+
+  ─────────────────────────────────────
+  Total Request Size:          17,296 tokens
+
+  Static Context (cached):     13,976 tokens (80.8%)
+  Dynamic Content:              3,320 tokens
+
+  Note: Static context is typically served from cache at 1/10th the cost.
+
+═══════════════════════════════════════════════════════════════════════════
+CONTEXT CACHING EFFICIENCY
+─────────────────────────────────────────────────────────────────────────
+
+How effectively caching is reducing your API costs:
+
+  Most Recent Request Input Breakdown:
+
+    Fresh Input (full price):         415 tokens (2.4%)
+    Cache Read (1/10 price):       16,881 tokens (97.6%)
+    ─────────────────────────────────────
+    Total Input:                   17,296 tokens
+
+  Cache Hit Rate: [█████████████████████████████░] 97.6%
+
+  Cost Impact:
+    Without caching: 17,296 tokens at full price
+    With caching:    415 full + 16,881 @ 10% = ~2,103 effective tokens
+
+  Effective Cost Reduction: 87.8%
+
+  ✓ Excellent caching! Your static context is being efficiently reused.
 
 TOKEN BREAKDOWN BY CATEGORY
 ─────────────────────────────────────────────────────────────────────────
@@ -341,7 +435,8 @@ plugin/
 │   ├── analyzer.ts      # ModelResolver, ContentCollector, TokenAnalysisEngine
 │   ├── cost.ts          # CostCalculator class
 │   ├── subagent.ts      # SubagentAnalyzer class
-│   └── formatter.ts     # OutputFormatter class
+│   ├── formatter.ts     # OutputFormatter class
+│   └── context.ts       # ContextAnalyzer class (tool defs, system prompt breakdown)
 ├── models.json          # Pricing data for 41+ models
 ├── package.json         # Plugin metadata
 └── install.sh           # Installation script
@@ -355,7 +450,8 @@ plugin/
 4. **TokenAnalysisEngine** (`tokenscope-lib/analyzer.ts`): Counts tokens and applies API telemetry adjustments
 5. **CostCalculator** (`tokenscope-lib/cost.ts`): Calculates costs from pricing database with cache-aware pricing
 6. **SubagentAnalyzer** (`tokenscope-lib/subagent.ts`): Recursively fetches and analyzes child sessions from Task tool calls
-7. **OutputFormatter** (`tokenscope-lib/formatter.ts`): Generates visual reports with charts and summaries
+7. **ContextAnalyzer** (`tokenscope-lib/context.ts`): Fetches tool definitions via API and parses system prompt sections
+8. **OutputFormatter** (`tokenscope-lib/formatter.ts`): Generates visual reports with charts and summaries
 
 ## Privacy & Security
 
@@ -405,6 +501,7 @@ plugin/
    curl -O https://raw.githubusercontent.com/ramtinJ95/opencode-tokenscope/main/plugin/tokenscope-lib/cost.ts
    curl -O https://raw.githubusercontent.com/ramtinJ95/opencode-tokenscope/main/plugin/tokenscope-lib/subagent.ts
    curl -O https://raw.githubusercontent.com/ramtinJ95/opencode-tokenscope/main/plugin/tokenscope-lib/formatter.ts
+   curl -O https://raw.githubusercontent.com/ramtinJ95/opencode-tokenscope/main/plugin/tokenscope-lib/context.ts
    ```
 
 3. **Download command file**:
