@@ -12,6 +12,7 @@ import { ModelResolver, ContentCollector, TokenAnalysisEngine } from "./tokensco
 import { CostCalculator } from "./tokenscope-lib/cost"
 import { SubagentAnalyzer } from "./tokenscope-lib/subagent"
 import { OutputFormatter } from "./tokenscope-lib/formatter"
+import { ContextAnalyzer } from "./tokenscope-lib/context"
 
 export const TokenAnalyzerPlugin: Plugin = async ({ client }) => {
   const pricingData = await loadModelPricing()
@@ -22,6 +23,7 @@ export const TokenAnalyzerPlugin: Plugin = async ({ client }) => {
   const analysisEngine = new TokenAnalysisEngine(tokenizerManager, contentCollector)
   const costCalculator = new CostCalculator(pricingData)
   const subagentAnalyzer = new SubagentAnalyzer(client, costCalculator, pricingData)
+  const contextAnalyzer = new ContextAnalyzer(client, tokenizerManager)
   const formatter = new OutputFormatter(costCalculator)
 
   return {
@@ -29,7 +31,8 @@ export const TokenAnalyzerPlugin: Plugin = async ({ client }) => {
       tokenscope: tool({
         description:
           "Analyze token usage across the current session with detailed breakdowns by category (system, user, assistant, tools, reasoning). " +
-          "Provides visual charts, identifies top token consumers, and includes costs from subagent (Task tool) child sessions.",
+          "Provides visual charts, identifies top token consumers, and includes costs from subagent (Task tool) child sessions. " +
+          "Also analyzes static context: tool definitions with token counts, system prompt breakdown, request composition, and cache efficiency metrics.",
         args: {
           sessionID: tool.schema.string().optional(),
           limitMessages: tool.schema.number().int().min(1).max(10).optional(),
@@ -61,6 +64,20 @@ export const TokenAnalyzerPlugin: Plugin = async ({ client }) => {
 
           if (args.includeSubagents !== false) {
             analysis.subagentAnalysis = await subagentAnalyzer.analyzeChildSessions(sessionID)
+          }
+
+          // Analyze context: tool definitions, system prompt breakdown, efficiency
+          try {
+            analysis.contextAnalysis = await contextAnalyzer.analyze(
+              messages,
+              tokenModel,
+              analysis.mostRecentInput,
+              analysis.mostRecentCacheRead,
+              analysis.mostRecentCacheWrite
+            )
+          } catch (error) {
+            console.error("Context analysis failed (non-fatal):", error)
+            // Continue without context analysis - it's supplementary data
           }
 
           const output = formatter.format(analysis)
