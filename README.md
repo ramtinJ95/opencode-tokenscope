@@ -405,15 +405,33 @@ The summary section shows a breakdown:
 
 ## Architecture
 
+### File Structure
+
+```
+plugin/
+├── tokenscope.ts        # Main entry point - Plugin export
+├── lib/
+│   ├── types.ts         # All interfaces and type definitions
+│   ├── config.ts        # Constants, model maps, pricing loader
+│   ├── tokenizer.ts     # TokenizerManager class
+│   ├── analyzer.ts      # ModelResolver, ContentCollector, TokenAnalysisEngine
+│   ├── cost.ts          # CostCalculator class
+│   ├── subagent.ts      # SubagentAnalyzer class
+│   └── formatter.ts     # OutputFormatter class
+├── models.json          # Pricing data for 41+ models
+├── package.json         # Plugin metadata
+└── install.sh           # Installation script
+```
+
 ### Core Components
 
-1. **TokenizerManager**: Loads and caches tokenizers (tiktoken, transformers)
-2. **ModelResolver**: Detects model and selects appropriate tokenizer
-3. **ContentCollector**: Extracts content from session messages, including tool call counts
-4. **TokenAnalysisEngine**: Counts tokens and applies API telemetry adjustments
-5. **CostCalculator**: Calculates costs from pricing database with cache-aware pricing
-6. **SubagentAnalyzer**: Recursively fetches and analyzes child sessions from Task tool calls
-7. **OutputFormatter**: Generates visual reports with charts and summaries
+1. **TokenizerManager** (`lib/tokenizer.ts`): Loads and caches tokenizers (tiktoken, transformers)
+2. **ModelResolver** (`lib/analyzer.ts`): Detects model and selects appropriate tokenizer
+3. **ContentCollector** (`lib/analyzer.ts`): Extracts content from session messages, including tool call counts
+4. **TokenAnalysisEngine** (`lib/analyzer.ts`): Counts tokens and applies API telemetry adjustments
+5. **CostCalculator** (`lib/cost.ts`): Calculates costs from pricing database with cache-aware pricing
+6. **SubagentAnalyzer** (`lib/subagent.ts`): Recursively fetches and analyzes child sessions from Task tool calls
+7. **OutputFormatter** (`lib/formatter.ts`): Generates visual reports with charts and summaries
 
 ## Privacy & Security
 
