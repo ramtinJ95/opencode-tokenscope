@@ -153,6 +153,77 @@ export interface ChildSession {
   parentID?: string
 }
 
+// Tool Definition Types (from /experimental/tool API)
+
+export interface ToolDefinition {
+  id: string
+  description: string
+  parameters: unknown // JSON Schema
+}
+
+export interface ToolDefinitionAnalysis {
+  id: string
+  description: string
+  descriptionTokens: number
+  schemaTokens: number
+  totalTokens: number
+}
+
+export interface ToolDefinitionsBreakdown {
+  tools: ToolDefinitionAnalysis[]
+  totalDescriptionTokens: number
+  totalSchemaTokens: number
+  totalTokens: number
+  toolCount: number
+}
+
+// System Prompt Breakdown Types
+
+export interface SystemPromptSection {
+  label: string
+  description: string // Human-readable explanation of what this section does
+  content: string
+  tokens: number
+}
+
+export interface SystemPromptBreakdown {
+  sections: SystemPromptSection[]
+  totalTokens: number
+  rawPrompt: string // The full system prompt for reference
+}
+
+// Context Efficiency Types
+
+export interface ContextEfficiency {
+  staticContextTokens: number // tool defs + system prompt
+  cacheReadTokens: number
+  cacheWriteTokens: number
+  freshInputTokens: number
+  cacheHitRate: number // percentage
+  effectiveCostReduction: number // percentage saved vs no caching
+}
+
+// Request Composition Types
+
+export interface RequestComposition {
+  toolDefinitions: number
+  systemPrompt: number
+  conversationHistory: number
+  userMessage: number
+  totalRequest: number
+}
+
+// Combined Context Analysis
+
+export interface ContextAnalysis {
+  toolDefinitions: ToolDefinitionsBreakdown
+  systemPrompt: SystemPromptBreakdown
+  efficiency: ContextEfficiency
+  requestComposition: RequestComposition
+  providerID: string
+  modelID: string
+}
+
 // Type guards
 
 export function isToolPart(part: SessionMessagePart): part is { type: "tool"; tool: string; state: ToolState } {
