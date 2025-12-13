@@ -4,6 +4,54 @@
 
 Track and optimize your token usage across system prompts, user messages, tool outputs, and more. Get detailed breakdowns, accurate cost estimates, and visual insights for your AI development workflow.
 
+## Installation
+
+```bash
+curl -sSL https://raw.githubusercontent.com/ramtinJ95/opencode-tokenscope/main/plugin/install.sh | bash
+```
+
+Then restart OpenCode and run `/tokenscope`
+
+## Updating
+
+**Option 1: Local script** (if you have the plugin installed)
+```bash
+bash ~/.config/opencode/plugin/install.sh --update
+```
+
+**Option 2: Remote script** (always works)
+```bash
+curl -sSL https://raw.githubusercontent.com/ramtinJ95/opencode-tokenscope/main/plugin/install.sh | bash -s -- --update
+```
+
+The `--update` flag skips dependency installation for faster updates.
+
+## Usage
+
+Simply type in OpenCode:
+```
+/tokenscope
+```
+
+The plugin will:
+1. Analyze the current session
+2. Count tokens across all categories
+3. Analyze all subagent (Task tool) child sessions recursively
+4. Calculate costs based on API telemetry
+5. Save detailed report to `token-usage-output.txt`
+
+### Options
+
+- **sessionID**: Analyze a specific session instead of the current one
+- **limitMessages**: Limit entries shown per category (1-10, default: 3)
+- **includeSubagents**: Include subagent child session costs (default: true)
+
+### Reading the Full Report
+
+```bash
+cat token-usage-output.txt
+```
+
 ## Features
 
 ### Comprehensive Token Analysis
@@ -29,122 +77,7 @@ Track and optimize your token usage across system prompts, user messages, tool o
 - **Model Normalization**: Handles `provider/model` format automatically
 - **Multi-Tokenizer Support**: Uses official tokenizers (tiktoken for OpenAI, transformers for others)
 
-## Quick Install
-
-### One-Line Install (Recommended)
-
-```bash
-curl -sSL https://raw.githubusercontent.com/ramtinJ95/opencode-tokenscope/main/plugin/install.sh | bash
-```
-
-Then restart OpenCode and run `/tokenscope`
-
-## Manual Installation
-
-<details>
-<summary>Click to expand manual installation steps</summary>
-
-### Requirements
-- OpenCode installed (`~/.config/opencode` directory exists)
-- npm (for tokenizer dependencies)
-- ~50MB disk space (for tokenizer models)
-
-### Installation Steps
-
-1. **Navigate to OpenCode config**:
-   ```bash
-   cd ~/.config/opencode
-   ```
-
-2. **Download plugin files**:
-   ```bash
-   # Download to plugin directory
-   cd plugin
-   curl -O https://raw.githubusercontent.com/ramtinJ95/opencode-tokenscope/main/plugin/tokenscope.ts
-   curl -O https://raw.githubusercontent.com/ramtinJ95/opencode-tokenscope/main/plugin/models.json
-   curl -O https://raw.githubusercontent.com/ramtinJ95/opencode-tokenscope/main/plugin/install.sh
-   curl -O https://raw.githubusercontent.com/ramtinJ95/opencode-tokenscope/main/plugin/package.json
-   ```
-
-3. **Download command file**:
-   ```bash
-   cd ../command
-   curl -O https://raw.githubusercontent.com/ramtinJ95/opencode-tokenscope/main/command/tokenscope.md
-   ```
-
-4. **Install dependencies**:
-   ```bash
-   cd ../plugin
-   chmod +x install.sh
-   ./install.sh
-   ```
-
-5. **Restart OpenCode**
-
-6. **Test**: Run `/tokenscope` in any session
-
-</details>
-
-## Updating
-
-### Quick Update (v1.2.1+)
-
-If you have v1.2.1 or later installed, use the local update script:
-
-```bash
-~/.config/opencode/plugin/install.sh --update
-```
-
-### Update from v1.2.0 or Earlier
-
-Use the remote script (this will also install the local update script for future use):
-
-```bash
-curl -sSL https://raw.githubusercontent.com/ramtinJ95/opencode-tokenscope/main/plugin/install.sh | bash -s -- --update
-```
-
-Both methods download the latest plugin files while skipping dependency installation (faster).
-
-### Full Reinstall
-
-For a full reinstall (if you're having issues):
-
-```bash
-curl -sSL https://raw.githubusercontent.com/ramtinJ95/opencode-tokenscope/main/plugin/install.sh | bash
-```
-
-## Usage
-
-### Basic Command
-
-Simply type in OpenCode:
-```
-/tokenscope
-```
-
-The plugin will:
-1. Analyze the current session
-2. Count tokens across all categories
-3. Analyze all subagent (Task tool) child sessions recursively
-4. Calculate costs based on API telemetry
-5. Display results in terminal
-6. Save detailed report to `token-usage-output.txt`
-
-### Options
-
-The tool accepts optional parameters:
-
-- **sessionID**: Analyze a specific session instead of the current one
-- **limitMessages**: Limit entries shown per category (1-10, default: 3)
-- **includeSubagents**: Include subagent child session costs (default: true)
-
-### Reading the Full Report
-
-```bash
-cat token-usage-output.txt
-```
-
-### Example Output
+## Example Output
 
 ```
 ═══════════════════════════════════════════════════════════════════════════
@@ -253,6 +186,7 @@ SUMMARY
 ═══════════════════════════════════════════════════════════════════════════
 
 ```
+
 ## Supported Models
 
 **41+ models with accurate pricing:**
@@ -324,49 +258,6 @@ The plugin uses OpenCode's session API to:
 ### Model Name Normalization
 Automatically handles `provider/model` format (e.g., `qwen/qwen3-coder` → `qwen3-coder`)
 
-## Troubleshooting
-
-### "Dependencies missing" Error
-
-Run the installer:
-```bash
-cd ~/.config/opencode/plugin
-./install.sh
-```
-
-### Command Not Appearing
-
-1. Verify `tokenscope.md` exists:
-   ```bash
-   ls ~/.config/opencode/command/tokenscope.md
-   ```
-2. Restart OpenCode completely
-3. Check OpenCode logs for plugin errors
-
-### Wrong Token Counts
-
-The plugin uses API telemetry (ground truth). If counts seem off:
-- **Expected ~2K difference from TUI**: Plugin analyzes before its own response is added
-- **Model detection**: Check that the model name is recognized in the output
-- **Tokenizer not installed**: Re-run `install.sh`
-
-### New Model Not Showing Correct Pricing
-
-1. Check if model exists in `models.json`
-2. Try exact match or prefix match (e.g., `claude-sonnet-4` matches `claude-sonnet-4-20250514`)
-3. Add entry to `models.json` if missing
-4. Restart OpenCode after editing `models.json`
-
-### Plugin Fails to Load
-
-1. Validate JSON syntax:
-   ```bash
-   cd ~/.config/opencode/plugin
-   node -e "JSON.parse(require('fs').readFileSync('models.json', 'utf8'))"
-   ```
-2. Check for trailing commas or syntax errors
-3. Plugin falls back to default pricing if file is invalid
-
 ## Understanding the Numbers
 
 ### Current Context vs Session Total
@@ -388,20 +279,53 @@ When using the Task tool, OpenCode spawns subagent sessions. These are tracked s
 - **Subagent API Calls**: Total API calls made by all subagents
 - **Grand Total**: Main session + all subagents combined
 
-The summary section shows a breakdown:
-```
-                          Cost        Tokens          API Calls
-  Main session:      $    0.5677       375,686            15
-  Subagents:         $    1.3888       566,474            23
-─────────────────────────────────────────────────────────────────────────
-  TOTAL:             $    1.9565       942,160            38
-```
-
 ### Cache Tokens
 
 - **Cache Read**: Tokens retrieved from cache (discounted rate ~90% off)
 - **Cache Write**: Tokens written to cache (slight premium ~25% more)
 - **Note**: Cache write is a billing charge, not additional context tokens
+
+## Troubleshooting
+
+### "Dependencies missing" Error
+
+Run the installer:
+```bash
+curl -sSL https://raw.githubusercontent.com/ramtinJ95/opencode-tokenscope/main/plugin/install.sh | bash
+```
+
+### Command Not Appearing
+
+1. Verify `tokenscope.md` exists:
+   ```bash
+   ls ~/.config/opencode/command/tokenscope.md
+   ```
+2. Restart OpenCode completely
+3. Check OpenCode logs for plugin errors
+
+### Wrong Token Counts
+
+The plugin uses API telemetry (ground truth). If counts seem off:
+- **Expected ~2K difference from TUI**: Plugin analyzes before its own response is added
+- **Model detection**: Check that the model name is recognized in the output
+- **Tokenizer not installed**: Re-run the installer
+
+### New Model Not Showing Correct Pricing
+
+1. Check if model exists in `models.json`
+2. Try exact match or prefix match (e.g., `claude-sonnet-4` matches `claude-sonnet-4-20250514`)
+3. Add entry to `models.json` if missing
+4. Restart OpenCode after editing `models.json`
+
+### Plugin Fails to Load
+
+1. Validate JSON syntax:
+   ```bash
+   cd ~/.config/opencode/plugin
+   node -e "JSON.parse(require('fs').readFileSync('models.json', 'utf8'))"
+   ```
+2. Check for trailing commas or syntax errors
+3. Plugin falls back to default pricing if file is invalid
 
 ## Architecture
 
@@ -448,6 +372,58 @@ plugin/
 - **Efficient**: Only analyzes on demand
 - **First-run download**: Transformers models download on demand (5-50MB per model)
 - **Subsequent runs**: Instant (uses cache)
+
+## Manual Installation
+
+<details>
+<summary>Click to expand manual installation steps</summary>
+
+### Requirements
+- OpenCode installed (`~/.config/opencode` directory exists)
+- npm (for tokenizer dependencies)
+- ~50MB disk space (for tokenizer models)
+
+### Installation Steps
+
+1. **Navigate to OpenCode config**:
+   ```bash
+   cd ~/.config/opencode
+   ```
+
+2. **Download plugin files**:
+   ```bash
+   mkdir -p plugin/tokenscope-lib
+   cd plugin
+   curl -O https://raw.githubusercontent.com/ramtinJ95/opencode-tokenscope/main/plugin/tokenscope.ts
+   curl -O https://raw.githubusercontent.com/ramtinJ95/opencode-tokenscope/main/plugin/models.json
+   curl -O https://raw.githubusercontent.com/ramtinJ95/opencode-tokenscope/main/plugin/package.json
+   cd tokenscope-lib
+   curl -O https://raw.githubusercontent.com/ramtinJ95/opencode-tokenscope/main/plugin/tokenscope-lib/types.ts
+   curl -O https://raw.githubusercontent.com/ramtinJ95/opencode-tokenscope/main/plugin/tokenscope-lib/config.ts
+   curl -O https://raw.githubusercontent.com/ramtinJ95/opencode-tokenscope/main/plugin/tokenscope-lib/tokenizer.ts
+   curl -O https://raw.githubusercontent.com/ramtinJ95/opencode-tokenscope/main/plugin/tokenscope-lib/analyzer.ts
+   curl -O https://raw.githubusercontent.com/ramtinJ95/opencode-tokenscope/main/plugin/tokenscope-lib/cost.ts
+   curl -O https://raw.githubusercontent.com/ramtinJ95/opencode-tokenscope/main/plugin/tokenscope-lib/subagent.ts
+   curl -O https://raw.githubusercontent.com/ramtinJ95/opencode-tokenscope/main/plugin/tokenscope-lib/formatter.ts
+   ```
+
+3. **Download command file**:
+   ```bash
+   cd ../../command
+   curl -O https://raw.githubusercontent.com/ramtinJ95/opencode-tokenscope/main/command/tokenscope.md
+   ```
+
+4. **Install dependencies**:
+   ```bash
+   cd ../plugin
+   npm install js-tiktoken@1.0.15 @huggingface/transformers@3.1.2
+   ```
+
+5. **Restart OpenCode**
+
+6. **Test**: Run `/tokenscope` in any session
+
+</details>
 
 ## Contributing
 
