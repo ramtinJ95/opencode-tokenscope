@@ -5,13 +5,13 @@ import { tool } from "@opencode-ai/plugin"
 import path from "path"
 import fs from "fs/promises"
 
-import type { SessionMessage } from "./lib/types"
-import { DEFAULT_ENTRY_LIMIT, loadModelPricing } from "./lib/config"
-import { TokenizerManager } from "./lib/tokenizer"
-import { ModelResolver, ContentCollector, TokenAnalysisEngine } from "./lib/analyzer"
-import { CostCalculator } from "./lib/cost"
-import { SubagentAnalyzer } from "./lib/subagent"
-import { OutputFormatter } from "./lib/formatter"
+import type { SessionMessage } from "./tokenscope-lib/types"
+import { DEFAULT_ENTRY_LIMIT, loadModelPricing } from "./tokenscope-lib/config"
+import { TokenizerManager } from "./tokenscope-lib/tokenizer"
+import { ModelResolver, ContentCollector, TokenAnalysisEngine } from "./tokenscope-lib/analyzer"
+import { CostCalculator } from "./tokenscope-lib/cost"
+import { SubagentAnalyzer } from "./tokenscope-lib/subagent"
+import { OutputFormatter } from "./tokenscope-lib/formatter"
 
 export const TokenAnalyzerPlugin: Plugin = async ({ client }) => {
   const pricingData = await loadModelPricing()

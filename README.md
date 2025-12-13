@@ -410,7 +410,7 @@ The summary section shows a breakdown:
 ```
 plugin/
 ├── tokenscope.ts        # Main entry point - Plugin export
-├── lib/
+├── tokenscope-lib/
 │   ├── types.ts         # All interfaces and type definitions
 │   ├── config.ts        # Constants, model maps, pricing loader
 │   ├── tokenizer.ts     # TokenizerManager class
@@ -425,13 +425,13 @@ plugin/
 
 ### Core Components
 
-1. **TokenizerManager** (`lib/tokenizer.ts`): Loads and caches tokenizers (tiktoken, transformers)
-2. **ModelResolver** (`lib/analyzer.ts`): Detects model and selects appropriate tokenizer
-3. **ContentCollector** (`lib/analyzer.ts`): Extracts content from session messages, including tool call counts
-4. **TokenAnalysisEngine** (`lib/analyzer.ts`): Counts tokens and applies API telemetry adjustments
-5. **CostCalculator** (`lib/cost.ts`): Calculates costs from pricing database with cache-aware pricing
-6. **SubagentAnalyzer** (`lib/subagent.ts`): Recursively fetches and analyzes child sessions from Task tool calls
-7. **OutputFormatter** (`lib/formatter.ts`): Generates visual reports with charts and summaries
+1. **TokenizerManager** (`tokenscope-lib/tokenizer.ts`): Loads and caches tokenizers (tiktoken, transformers)
+2. **ModelResolver** (`tokenscope-lib/analyzer.ts`): Detects model and selects appropriate tokenizer
+3. **ContentCollector** (`tokenscope-lib/analyzer.ts`): Extracts content from session messages, including tool call counts
+4. **TokenAnalysisEngine** (`tokenscope-lib/analyzer.ts`): Counts tokens and applies API telemetry adjustments
+5. **CostCalculator** (`tokenscope-lib/cost.ts`): Calculates costs from pricing database with cache-aware pricing
+6. **SubagentAnalyzer** (`tokenscope-lib/subagent.ts`): Recursively fetches and analyzes child sessions from Task tool calls
+7. **OutputFormatter** (`tokenscope-lib/formatter.ts`): Generates visual reports with charts and summaries
 
 ## Privacy & Security
 
