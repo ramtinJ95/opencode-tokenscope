@@ -1,0 +1,6 @@
+{
+  "enableContextBreakdown": true,
+  "enableToolSchemaEstimation": true,
+  "enableCacheEfficiency": true,
+  "enableSubagentAnalysis": true
+}

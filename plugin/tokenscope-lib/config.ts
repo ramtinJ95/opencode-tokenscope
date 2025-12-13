@@ -3,7 +3,7 @@
 import path from "path"
 import fs from "fs/promises"
 import { fileURLToPath } from "url"
-import type { TokenizerSpec, ModelPricing } from "./types"
+import type { TokenizerSpec, ModelPricing, TokenscopeConfig } from "./types"
 
 export const DEFAULT_ENTRY_LIMIT = 3
 export const VENDOR_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "vendor", "node_modules")
@@ -22,6 +22,31 @@ export async function loadModelPricing(): Promise<Record<string, ModelPricing>> 
   } catch {
     PRICING_CACHE = { default: { input: 1, output: 3, cacheWrite: 0, cacheRead: 0 } }
     return PRICING_CACHE
+  }
+}
+
+// Tokenscope config defaults and loader
+
+export const DEFAULT_TOKENSCOPE_CONFIG: TokenscopeConfig = {
+  enableContextBreakdown: true,
+  enableToolSchemaEstimation: true,
+  enableCacheEfficiency: true,
+  enableSubagentAnalysis: true,
+}
+
+let TOKENSCOPE_CONFIG_CACHE: TokenscopeConfig | null = null
+
+export async function loadTokenscopeConfig(): Promise<TokenscopeConfig> {
+  if (TOKENSCOPE_CONFIG_CACHE) return TOKENSCOPE_CONFIG_CACHE
+
+  try {
+    const configPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "tokenscope-config.json")
+    const data = await fs.readFile(configPath, "utf8")
+    TOKENSCOPE_CONFIG_CACHE = { ...DEFAULT_TOKENSCOPE_CONFIG, ...JSON.parse(data) }
+    return TOKENSCOPE_CONFIG_CACHE
+  } catch {
+    TOKENSCOPE_CONFIG_CACHE = DEFAULT_TOKENSCOPE_CONFIG
+    return TOKENSCOPE_CONFIG_CACHE
   }
 }
 

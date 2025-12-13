@@ -1,6 +1,15 @@
 // OutputFormatter - generates visual reports from token analysis
 
-import type { TokenAnalysis, CategoryEntry, CostEstimate, SubagentAnalysis } from "./types"
+import type {
+  TokenAnalysis,
+  CategoryEntry,
+  CostEstimate,
+  SubagentAnalysis,
+  ContextBreakdown,
+  ToolSchemaEstimate,
+  CacheEfficiency,
+  TokenscopeConfig,
+} from "./types"
 import { CostCalculator } from "./cost"
 
 export class OutputFormatter {
@@ -9,8 +18,16 @@ export class OutputFormatter {
   private readonly CATEGORY_LABEL_WIDTH = 9
   private readonly TOOL_LABEL_WIDTH = 20
   private readonly TOP_CONTRIBUTOR_LABEL_WIDTH = 30
+  private readonly CONTEXT_LABEL_WIDTH = 22
+  private readonly TOOL_ESTIMATE_LABEL_WIDTH = 18
+
+  private config: TokenscopeConfig | null = null
 
   constructor(private costCalculator: CostCalculator) {}
+
+  setConfig(config: TokenscopeConfig): void {
+    this.config = config
+  }
 
   private formatCategoryBar(
     label: string,
@@ -85,7 +102,10 @@ export class OutputFormatter {
       topEntries,
       toolEntries,
       costEstimate,
-      analysis.subagentAnalysis
+      analysis.subagentAnalysis,
+      analysis.contextBreakdown,
+      analysis.toolEstimates,
+      analysis.cacheEfficiency
     )
   }
 
@@ -109,7 +129,10 @@ export class OutputFormatter {
     topEntries: CategoryEntry[],
     toolEntries: Array<{ label: string; tokens: number; calls: number }>,
     cost: CostEstimate,
-    subagentAnalysis?: SubagentAnalysis
+    subagentAnalysis?: SubagentAnalysis,
+    contextBreakdown?: ContextBreakdown,
+    toolEstimates?: ToolSchemaEstimate[],
+    cacheEfficiency?: CacheEfficiency
   ): string {
     const lines: string[] = []
     const sessionTotal = inputTokens + cacheReadTokens + cacheWriteTokens + outputTokens + reasoningTokens
@@ -278,7 +301,22 @@ export class OutputFormatter {
       lines.push(`and 200K+ context adjustments.`)
     }
 
-    // 7. SUBAGENT COSTS (if any)
+    // 7. CONTEXT BREAKDOWN (if enabled and available)
+    if (this.config?.enableContextBreakdown && contextBreakdown && contextBreakdown.totalCachedContext > 0) {
+      lines.push(...this.formatContextBreakdown(contextBreakdown))
+    }
+
+    // 8. TOOL DEFINITION COSTS (if enabled and available)
+    if (this.config?.enableToolSchemaEstimation && toolEstimates && toolEstimates.length > 0) {
+      lines.push(...this.formatToolEstimates(toolEstimates))
+    }
+
+    // 9. CACHE EFFICIENCY (if enabled and available)
+    if (this.config?.enableCacheEfficiency && cacheEfficiency && cacheEfficiency.totalInputTokens > 0) {
+      lines.push(...this.formatCacheEfficiency(cacheEfficiency, cost, modelName))
+    }
+
+    // 10. SUBAGENT COSTS (if any)
     if (subagentAnalysis && subagentAnalysis.subagents.length > 0) {
       const subagentLabelWidth = 25
       const subagentTotalCost = cost.isSubscription
@@ -306,7 +344,7 @@ export class OutputFormatter {
       )
     }
 
-    // 8. SUMMARY (always last)
+    // 11. SUMMARY (always last)
     lines.push(``)
     lines.push(`\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550`)
     lines.push(`SUMMARY`)
@@ -342,6 +380,170 @@ export class OutputFormatter {
     lines.push(`\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550`)
 
     return lines.join("\n")
+  }
+
+  private formatContextBreakdown(breakdown: ContextBreakdown): string[] {
+    const lines: string[] = []
+    const total = breakdown.totalCachedContext
+
+    // Check if this is estimated from cache tokens vs actual system prompts
+    const isEstimated = !breakdown.baseSystemPrompt.identified
+
+    lines.push(``)
+    lines.push(`\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550`)
+    if (isEstimated) {
+      lines.push(`CONTEXT BREAKDOWN (Estimated from cache_write tokens)`)
+    } else {
+      lines.push(`CONTEXT BREAKDOWN (From system prompt analysis)`)
+    }
+    lines.push(`\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
+    lines.push(``)
+
+    // Base System Prompt
+    if (breakdown.baseSystemPrompt.tokens > 0) {
+      const bar = this.formatContextBar("Base System Prompt", breakdown.baseSystemPrompt.tokens, total)
+      lines.push(`  ${bar}`)
+    }
+
+    // Tool Definitions
+    if (breakdown.toolDefinitions.tokens > 0) {
+      const label =
+        breakdown.toolDefinitions.toolCount > 0
+          ? `Tool Definitions (${breakdown.toolDefinitions.toolCount})`
+          : "Tool Definitions"
+      const bar = this.formatContextBar(label, breakdown.toolDefinitions.tokens, total)
+      lines.push(`  ${bar}`)
+    }
+
+    // Environment Context
+    if (breakdown.environmentContext.tokens > 0) {
+      const bar = this.formatContextBar("Environment Context", breakdown.environmentContext.tokens, total)
+      lines.push(`  ${bar}`)
+    }
+
+    // Project Tree
+    if (breakdown.projectTree.tokens > 0) {
+      const label =
+        breakdown.projectTree.fileCount > 0
+          ? `Project Tree (~${breakdown.projectTree.fileCount} files)`
+          : "Project Tree"
+      const bar = this.formatContextBar(label, breakdown.projectTree.tokens, total)
+      lines.push(`  ${bar}`)
+    }
+
+    // Custom Instructions
+    if (breakdown.customInstructions.tokens > 0) {
+      const bar = this.formatContextBar("Custom Instructions", breakdown.customInstructions.tokens, total)
+      lines.push(`  ${bar}`)
+      if (breakdown.customInstructions.sources.length > 0) {
+        for (const source of breakdown.customInstructions.sources.slice(0, 3)) {
+          lines.push(`      \u2192 ${source}`)
+        }
+      }
+    }
+
+    lines.push(`  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
+    lines.push(`  Total Cached Context:${" ".repeat(34)}~${this.formatNumber(total)} tokens`)
+    lines.push(``)
+    if (isEstimated) {
+      lines.push(`  Note: Breakdown estimated from first cache_write. Actual distribution may vary.`)
+    } else {
+      lines.push(`  Note: Values from tokenizing actual system prompt content.`)
+    }
+
+    return lines
+  }
+
+  private formatContextBar(label: string, tokens: number, total: number): string {
+    const percentage = total > 0 ? ((tokens / total) * 100).toFixed(1) : "0.0"
+    const percentageNum = parseFloat(percentage)
+    const barWidth = Math.round((percentageNum / 100) * this.BAR_WIDTH)
+    const bar = "\u2588".repeat(barWidth) + "\u2591".repeat(Math.max(0, this.BAR_WIDTH - barWidth))
+    const labelPadded = label.padEnd(this.CONTEXT_LABEL_WIDTH)
+
+    return `${labelPadded} ${bar}   ~${this.formatNumber(tokens).padStart(6)} tokens`
+  }
+
+  private formatToolEstimates(estimates: ToolSchemaEstimate[]): string[] {
+    const lines: string[] = []
+    const enabledEstimates = estimates.filter((e) => e.enabled)
+    const totalTokens = enabledEstimates.reduce((sum, e) => sum + e.estimatedTokens, 0)
+
+    lines.push(``)
+    lines.push(`\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550`)
+    lines.push(`TOOL DEFINITION COSTS (Estimated from argument analysis)`)
+    lines.push(`\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
+    lines.push(``)
+    lines.push(`  ${"Tool".padEnd(this.TOOL_ESTIMATE_LABEL_WIDTH)} ${"Est. Tokens".padStart(12)}   Args   Complexity`)
+    lines.push(`  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
+
+    for (const estimate of enabledEstimates) {
+      const name = estimate.name.padEnd(this.TOOL_ESTIMATE_LABEL_WIDTH)
+      const tokens = `~${this.formatNumber(estimate.estimatedTokens)}`.padStart(12)
+      const args = estimate.argumentCount.toString().padStart(5)
+      const complexity = estimate.hasComplexArgs ? "complex (arrays/objects)" : "simple"
+      lines.push(`  ${name} ${tokens}   ${args}   ${complexity}`)
+    }
+
+    lines.push(`  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
+    lines.push(
+      `  Total:${" ".repeat(this.TOOL_ESTIMATE_LABEL_WIDTH - 6)} ~${this.formatNumber(totalTokens).padStart(11)} tokens (${enabledEstimates.length} enabled tools)`
+    )
+    lines.push(``)
+    lines.push(`  Note: Estimates inferred from tool call arguments in this session.`)
+    lines.push(`        Actual schema tokens may vary +/-20%.`)
+
+    return lines
+  }
+
+  private formatCacheEfficiency(efficiency: CacheEfficiency, cost: CostEstimate, modelName: string): string[] {
+    const lines: string[] = []
+    const total = efficiency.totalInputTokens
+
+    lines.push(``)
+    lines.push(`\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550`)
+    lines.push(`CACHE EFFICIENCY`)
+    lines.push(`\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
+    lines.push(``)
+    lines.push(`  Token Distribution:`)
+
+    // Cache Read bar
+    const cacheReadPct = total > 0 ? ((efficiency.cacheReadTokens / total) * 100).toFixed(1) : "0.0"
+    const cacheReadBar = this.formatEfficiencyBar(efficiency.cacheReadTokens, total)
+    lines.push(`    Cache Read:        ${this.formatNumber(efficiency.cacheReadTokens).padStart(10)} tokens   ${cacheReadBar}  ${cacheReadPct}%`)
+
+    // Fresh Input bar
+    const freshPct = total > 0 ? ((efficiency.freshInputTokens / total) * 100).toFixed(1) : "0.0"
+    const freshBar = this.formatEfficiencyBar(efficiency.freshInputTokens, total)
+    lines.push(`    Fresh Input:       ${this.formatNumber(efficiency.freshInputTokens).padStart(10)} tokens   ${freshBar}  ${freshPct}%`)
+
+    lines.push(`  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
+    lines.push(`  Cache Hit Rate:      ${efficiency.cacheHitRate.toFixed(1)}%`)
+    lines.push(``)
+
+    // Cost analysis
+    lines.push(
+      `  Cost Analysis (${modelName} @ $${cost.pricePerMillionInput.toFixed(2)}/M input, $${cost.pricePerMillionCacheRead.toFixed(2)}/M cache read):`
+    )
+    lines.push(
+      `    Without caching:   $${efficiency.costWithoutCaching.toFixed(4)}  (${this.formatNumber(total)} tokens x $${cost.pricePerMillionInput.toFixed(2)}/M)`
+    )
+    lines.push(
+      `    With caching:      $${efficiency.costWithCaching.toFixed(4)}  (fresh x $${cost.pricePerMillionInput.toFixed(2)}/M + cached x $${cost.pricePerMillionCacheRead.toFixed(2)}/M)`
+    )
+    lines.push(`  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
+    lines.push(`  Cost Savings:        $${efficiency.costSavings.toFixed(4)}  (${efficiency.savingsPercent.toFixed(1)}% reduction)`)
+    lines.push(
+      `  Effective Rate:      $${efficiency.effectiveRate.toFixed(2)}/M tokens  (vs. $${efficiency.standardRate.toFixed(2)}/M standard)`
+    )
+
+    return lines
+  }
+
+  private formatEfficiencyBar(value: number, total: number): string {
+    const percentage = total > 0 ? (value / total) * 100 : 0
+    const barWidth = Math.round((percentage / 100) * this.BAR_WIDTH)
+    return "\u2588".repeat(barWidth) + "\u2591".repeat(Math.max(0, this.BAR_WIDTH - barWidth))
   }
 
   private collectTopEntries(analysis: TokenAnalysis, limit: number): CategoryEntry[] {

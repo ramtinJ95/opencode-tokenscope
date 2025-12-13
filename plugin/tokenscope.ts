@@ -6,15 +6,17 @@ import path from "path"
 import fs from "fs/promises"
 
 import type { SessionMessage } from "./tokenscope-lib/types"
-import { DEFAULT_ENTRY_LIMIT, loadModelPricing } from "./tokenscope-lib/config"
+import { DEFAULT_ENTRY_LIMIT, loadModelPricing, loadTokenscopeConfig } from "./tokenscope-lib/config"
 import { TokenizerManager } from "./tokenscope-lib/tokenizer"
 import { ModelResolver, ContentCollector, TokenAnalysisEngine } from "./tokenscope-lib/analyzer"
 import { CostCalculator } from "./tokenscope-lib/cost"
 import { SubagentAnalyzer } from "./tokenscope-lib/subagent"
 import { OutputFormatter } from "./tokenscope-lib/formatter"
+import { ContextAnalyzer } from "./tokenscope-lib/context"
 
 export const TokenAnalyzerPlugin: Plugin = async ({ client }) => {
   const pricingData = await loadModelPricing()
+  const config = await loadTokenscopeConfig()
 
   const tokenizerManager = new TokenizerManager()
   const modelResolver = new ModelResolver()
@@ -22,7 +24,11 @@ export const TokenAnalyzerPlugin: Plugin = async ({ client }) => {
   const analysisEngine = new TokenAnalysisEngine(tokenizerManager, contentCollector)
   const costCalculator = new CostCalculator(pricingData)
   const subagentAnalyzer = new SubagentAnalyzer(client, costCalculator, pricingData)
+  const contextAnalyzer = new ContextAnalyzer(tokenizerManager)
   const formatter = new OutputFormatter(costCalculator)
+
+  // Set config on formatter to control section rendering
+  formatter.setConfig(config)
 
   return {
     tool: {
@@ -59,8 +65,25 @@ export const TokenAnalyzerPlugin: Plugin = async ({ client }) => {
             args.limitMessages ?? DEFAULT_ENTRY_LIMIT
           )
 
-          if (args.includeSubagents !== false) {
+          // Subagent analysis (respects config)
+          const shouldIncludeSubagents = args.includeSubagents !== false && config.enableSubagentAnalysis
+          if (shouldIncludeSubagents) {
             analysis.subagentAnalysis = await subagentAnalyzer.analyzeChildSessions(sessionID)
+          }
+
+          // Context analysis (context breakdown, tool estimates, cache efficiency)
+          const pricing = costCalculator.getPricing(tokenModel.name)
+          const contextResult = await contextAnalyzer.analyze(sessionID, tokenModel, pricing, config)
+
+          // Merge context analysis results into main analysis
+          if (contextResult.contextBreakdown) {
+            analysis.contextBreakdown = contextResult.contextBreakdown
+          }
+          if (contextResult.toolEstimates) {
+            analysis.toolEstimates = contextResult.toolEstimates
+          }
+          if (contextResult.cacheEfficiency) {
+            analysis.cacheEfficiency = contextResult.cacheEfficiency
           }
 
           const output = formatter.format(analysis)

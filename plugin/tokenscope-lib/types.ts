@@ -75,6 +75,10 @@ export interface TokenAnalysis {
   allToolsCalled: string[]
   toolCallCounts: Map<string, number>
   subagentAnalysis?: SubagentAnalysis
+  // New context analysis fields
+  contextBreakdown?: ContextBreakdown
+  toolEstimates?: ToolSchemaEstimate[]
+  cacheEfficiency?: CacheEfficiency
 }
 
 export interface TokenModel {
@@ -138,6 +142,103 @@ export interface SubagentAnalysis {
   totalApiCost: number
   totalEstimatedCost: number
   totalApiCalls: number
+}
+
+// Context breakdown types
+
+export interface ContextComponent {
+  tokens: number
+  identified: boolean // true = found in prompts, false = estimated
+}
+
+export interface ContextBreakdown {
+  baseSystemPrompt: ContextComponent
+  toolDefinitions: ContextComponent & { toolCount: number }
+  environmentContext: ContextComponent & { components: string[] }
+  projectTree: ContextComponent & { fileCount: number }
+  customInstructions: ContextComponent & { sources: string[] }
+  totalCachedContext: number
+}
+
+// Tool schema estimation types
+
+export interface ToolSchemaEstimate {
+  name: string
+  enabled: boolean
+  estimatedTokens: number
+  argumentCount: number
+  hasComplexArgs: boolean
+}
+
+// Cache efficiency types
+
+export interface CacheEfficiency {
+  cacheReadTokens: number
+  freshInputTokens: number
+  cacheWriteTokens: number
+  totalInputTokens: number
+  cacheHitRate: number
+  costWithoutCaching: number
+  costWithCaching: number
+  costSavings: number
+  savingsPercent: number
+  effectiveRate: number
+  standardRate: number
+}
+
+// Export parsing types
+
+export interface ExportedSession {
+  info: ExportedSessionInfo
+  messages: ExportedMessage[]
+}
+
+export interface ExportedSessionInfo {
+  id: string
+  title: string
+  parentID?: string
+}
+
+export interface ExportedMessage {
+  info: ExportedMessageInfo
+  parts: ExportedPart[]
+}
+
+export interface ExportedMessageInfo {
+  id: string
+  role: "user" | "assistant"
+  system?: string[]
+  tools?: Record<string, boolean>
+  tokens?: TokenUsage
+  cost?: number
+  modelID?: string
+  providerID?: string
+}
+
+export interface ExportedPart {
+  type: string
+  tool?: string
+  state?: {
+    status: string
+    input?: Record<string, unknown>
+  }
+}
+
+// Config types
+
+export interface TokenscopeConfig {
+  enableContextBreakdown: boolean
+  enableToolSchemaEstimation: boolean
+  enableCacheEfficiency: boolean
+  enableSubagentAnalysis: boolean
+}
+
+// Context analysis result
+
+export interface ContextAnalysisResult {
+  contextBreakdown?: ContextBreakdown
+  toolEstimates?: ToolSchemaEstimate[]
+  cacheEfficiency?: CacheEfficiency
 }
 
 export interface ModelPricing {
