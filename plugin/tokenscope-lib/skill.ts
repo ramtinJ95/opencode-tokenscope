@@ -201,6 +201,11 @@ export class SkillAnalyzer {
     }
 
     // Convert map to array and calculate totals
+    // Note: We multiply tokens by callCount because OpenCode does NOT deduplicate
+    // skill content. Each call to the skill tool adds the full content to context
+    // as a new tool result. See OpenCode source:
+    // - Skill tool execution: https://github.com/sst/opencode/blob/main/packages/opencode/src/tool/skill.ts
+    // - Tool result handling: https://github.com/sst/opencode/blob/main/packages/opencode/src/session/message-v2.ts
     const skills: LoadedSkill[] = []
     for (const [, skillData] of skillMap) {
       const totalSkillTokens = skillData.tokens * skillData.callCount
