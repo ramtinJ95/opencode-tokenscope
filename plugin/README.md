@@ -118,17 +118,17 @@ cat token-usage-output.txt
 - **Visual Charts**: Easy-to-read ASCII bar charts with percentages and token counts
 - **Smart Inference**: Automatically infers system prompts from API telemetry (since they're not exposed in session messages)
 
-### Context Breakdown Analysis (New in v1.4.0)
+### Context Breakdown Analysis
 - **System Prompt Components**: See token distribution across base prompt, tool definitions, environment context, project tree, and custom instructions
 - **Automatic Estimation**: Estimates breakdown from `cache_write` tokens when system prompt content isn't directly available
 - **Tool Count**: Shows how many tools are loaded and their combined token cost
 
-### Tool Definition Cost Estimates (New in v1.4.0)
+### Tool Definition Cost Estimates
 - **Per-Tool Estimates**: Lists all enabled tools with estimated schema token costs
 - **Argument Analysis**: Infers argument count and complexity from actual tool calls in the session
 - **Complexity Detection**: Distinguishes between simple arguments and complex ones (arrays/objects)
 
-### Cache Efficiency Metrics (New in v1.4.0)
+### Cache Efficiency Metrics
 - **Cache Hit Rate**: Visual display of cache read vs fresh input token distribution
 - **Cost Savings**: Calculates actual savings from prompt caching
 - **Effective Rate**: Shows what you're actually paying per token vs standard rates
@@ -152,7 +152,7 @@ cat token-usage-output.txt
 - **Multi-Tokenizer Support**: Uses official tokenizers (tiktoken for OpenAI, transformers for others)
 - **Configurable Sections**: Enable/disable analysis features via `tokenscope-config.json`
 
-### Skill Analysis (New)
+### Skill Analysis
 - **Available Skills**: Shows all skills listed in the skill tool definition with their token cost
 - **Loaded Skills**: Tracks skills loaded during the session with call counts
 - **Cumulative Token Tracking**: Accurately counts token cost when skills are called multiple times

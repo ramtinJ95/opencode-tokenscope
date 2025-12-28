@@ -118,17 +118,17 @@ cat token-usage-output.txt
 - **Visual Charts**: Easy-to-read ASCII bar charts with percentages and token counts
 - **Smart Inference**: Automatically infers system prompts from API telemetry (since they're not exposed in session messages)
 
-### Context Breakdown Analysis (New in v1.4.0)
+### Context Breakdown Analysis
 - **System Prompt Components**: See token distribution across base prompt, tool definitions, environment context, project tree, and custom instructions
 - **Automatic Estimation**: Estimates breakdown from `cache_write` tokens when system prompt content isn't directly available
 - **Tool Count**: Shows how many tools are loaded and their combined token cost
 
-### Tool Definition Cost Estimates (New in v1.4.0)
+### Tool Definition Cost Estimates
 - **Per-Tool Estimates**: Lists all enabled tools with estimated schema token costs
 - **Argument Analysis**: Infers argument count and complexity from actual tool calls in the session
 - **Complexity Detection**: Distinguishes between simple arguments and complex ones (arrays/objects)
 
-### Cache Efficiency Metrics (New in v1.4.0)
+### Cache Efficiency Metrics
 - **Cache Hit Rate**: Visual display of cache read vs fresh input token distribution
 - **Cost Savings**: Calculates actual savings from prompt caching
 - **Effective Rate**: Shows what you're actually paying per token vs standard rates
@@ -151,6 +151,54 @@ cat token-usage-output.txt
 - **Model Normalization**: Handles `provider/model` format automatically
 - **Multi-Tokenizer Support**: Uses official tokenizers (tiktoken for OpenAI, transformers for others)
 - **Configurable Sections**: Enable/disable analysis features via `tokenscope-config.json`
+
+### Skill Analysis
+- **Available Skills**: Shows all skills listed in the skill tool definition with their token cost
+- **Loaded Skills**: Tracks skills loaded during the session with call counts
+- **Cumulative Token Tracking**: Accurately counts token cost when skills are called multiple times
+
+## Understanding OpenCode Skill Behavior
+
+This section explains how OpenCode handles skills and why the token counting works the way it does.
+
+### How Skills Work
+
+Skills are on-demand instructions that agents can load via the `skill` tool. They have two token consumption points:
+
+1. **Available Skills List**: Skill names and descriptions are embedded in the `skill` tool's description as XML. This is part of the system prompt and costs tokens on **every API call**.
+
+2. **Loaded Skill Content**: When an agent calls `skill({ name: "my-skill" })`, the full SKILL.md content is loaded and returned as a tool result.
+
+### Why Multiple Skill Calls Multiply Token Cost
+
+**Important**: OpenCode does **not** deduplicate skill content. Each time the same skill is called, the full content is added to context again as a new tool result.
+
+This means if you call `skill({ name: "git-release" })` 3 times and it contains 500 tokens:
+- Total context cost = 500 × 3 = **1,500 tokens**
+
+This behavior is by design in OpenCode. You can verify this in the source code:
+
+| Component | Source Link |
+|-----------|-------------|
+| Skill tool execution | [packages/opencode/src/tool/skill.ts](https://github.com/sst/opencode/blob/main/packages/opencode/src/tool/skill.ts) |
+| Tool result handling | [packages/opencode/src/session/message-v2.ts](https://github.com/sst/opencode/blob/main/packages/opencode/src/session/message-v2.ts) |
+| Skill pruning protection | [packages/opencode/src/session/compaction.ts](https://github.com/sst/opencode/blob/main/packages/opencode/src/session/compaction.ts) |
+
+### Skill Content is Protected from Pruning
+
+OpenCode protects skill tool results from being pruned during context management. From the [compaction.ts source](https://github.com/sst/opencode/blob/main/packages/opencode/src/session/compaction.ts):
+
+```typescript
+const PRUNE_PROTECTED_TOOLS = ["skill"]
+```
+
+This means loaded skill content stays in context for the duration of the session (unless full session compaction/summarization occurs).
+
+### Recommendations
+
+- **Call skills sparingly**: Since each call adds full content, avoid calling the same skill multiple times
+- **Monitor skill token usage**: Use TokenScope to see which skills consume the most tokens
+- **Consider skill size**: Large skills (1000+ tokens) can quickly inflate context when called repeatedly
 
 ## Example Output
 
@@ -341,7 +389,8 @@ The plugin includes a `tokenscope-config.json` file with these defaults:
   "enableContextBreakdown": true,
   "enableToolSchemaEstimation": true,
   "enableCacheEfficiency": true,
-  "enableSubagentAnalysis": true
+  "enableSubagentAnalysis": true,
+  "enableSkillAnalysis": true
 }
 ```
 
