@@ -13,6 +13,7 @@ import { CostCalculator } from "./tokenscope-lib/cost"
 import { SubagentAnalyzer } from "./tokenscope-lib/subagent"
 import { OutputFormatter } from "./tokenscope-lib/formatter"
 import { ContextAnalyzer } from "./tokenscope-lib/context"
+import { SkillAnalyzer } from "./tokenscope-lib/skill"
 
 export const TokenAnalyzerPlugin: Plugin = async ({ client }) => {
   const pricingData = await loadModelPricing()
@@ -25,6 +26,7 @@ export const TokenAnalyzerPlugin: Plugin = async ({ client }) => {
   const costCalculator = new CostCalculator(pricingData)
   const subagentAnalyzer = new SubagentAnalyzer(client, costCalculator, pricingData)
   const contextAnalyzer = new ContextAnalyzer(tokenizerManager)
+  const skillAnalyzer = new SkillAnalyzer(client, tokenizerManager)
   const formatter = new OutputFormatter(costCalculator)
 
   // Set config on formatter to control section rendering
@@ -57,7 +59,7 @@ export const TokenAnalyzerPlugin: Plugin = async ({ client }) => {
             return `Session ${sessionID} has no messages yet.`
           }
 
-          const tokenModel = modelResolver.resolveTokenModel(messages)
+          const { model: tokenModel, providerID, modelID } = modelResolver.resolveModelAndProvider(messages)
           const analysis = await analysisEngine.analyze(
             sessionID,
             messages,
@@ -84,6 +86,17 @@ export const TokenAnalyzerPlugin: Plugin = async ({ client }) => {
           }
           if (contextResult.cacheEfficiency) {
             analysis.cacheEfficiency = contextResult.cacheEfficiency
+          }
+
+          // Skill analysis (respects config)
+          if (config.enableSkillAnalysis) {
+            analysis.skillAnalysis = await skillAnalyzer.analyze(
+              messages,
+              providerID,
+              modelID,
+              tokenModel,
+              config
+            )
           }
 
           const output = formatter.format(analysis)
