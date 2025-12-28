@@ -9,6 +9,7 @@ import type {
   ToolSchemaEstimate,
   CacheEfficiency,
   TokenscopeConfig,
+  SkillAnalysis,
 } from "./types"
 import { CostCalculator } from "./cost"
 
@@ -20,6 +21,8 @@ export class OutputFormatter {
   private readonly TOP_CONTRIBUTOR_LABEL_WIDTH = 30
   private readonly CONTEXT_LABEL_WIDTH = 22
   private readonly TOOL_ESTIMATE_LABEL_WIDTH = 18
+  private readonly SKILL_NAME_WIDTH = 22
+  private readonly SKILL_DESC_WIDTH = 45
 
   private config: TokenscopeConfig | null = null
 
@@ -105,7 +108,8 @@ export class OutputFormatter {
       analysis.subagentAnalysis,
       analysis.contextBreakdown,
       analysis.toolEstimates,
-      analysis.cacheEfficiency
+      analysis.cacheEfficiency,
+      analysis.skillAnalysis
     )
   }
 
@@ -132,7 +136,8 @@ export class OutputFormatter {
     subagentAnalysis?: SubagentAnalysis,
     contextBreakdown?: ContextBreakdown,
     toolEstimates?: ToolSchemaEstimate[],
-    cacheEfficiency?: CacheEfficiency
+    cacheEfficiency?: CacheEfficiency,
+    skillAnalysis?: SkillAnalysis
   ): string {
     const lines: string[] = []
     const sessionTotal = inputTokens + cacheReadTokens + cacheWriteTokens + outputTokens + reasoningTokens
@@ -304,6 +309,16 @@ export class OutputFormatter {
     // 7. CONTEXT BREAKDOWN (if enabled and available)
     if (this.config?.enableContextBreakdown && contextBreakdown && contextBreakdown.totalCachedContext > 0) {
       lines.push(...this.formatContextBreakdown(contextBreakdown))
+    }
+
+    // 7.5 SKILLS ANALYSIS (if enabled and available)
+    if (this.config?.enableSkillAnalysis && skillAnalysis) {
+      if (skillAnalysis.availableSkills.length > 0) {
+        lines.push(...this.formatAvailableSkills(skillAnalysis))
+      }
+      if (skillAnalysis.loadedSkills.length > 0) {
+        lines.push(...this.formatLoadedSkills(skillAnalysis))
+      }
     }
 
     // 8. TOOL DEFINITION COSTS (if enabled and available)
@@ -544,6 +559,93 @@ export class OutputFormatter {
     const percentage = total > 0 ? (value / total) * 100 : 0
     const barWidth = Math.round((percentage / 100) * this.BAR_WIDTH)
     return "\u2588".repeat(barWidth) + "\u2591".repeat(Math.max(0, this.BAR_WIDTH - barWidth))
+  }
+
+  private formatAvailableSkills(analysis: SkillAnalysis): string[] {
+    const lines: string[] = []
+    const total = analysis.totalAvailableTokens
+
+    lines.push(``)
+    lines.push(`\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550`)
+    lines.push(`AVAILABLE SKILLS (in tool definitions)`)
+    lines.push(`\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
+    lines.push(``)
+    lines.push(`These skills are listed in the skill tool description and consume tokens on every API call.`)
+    lines.push(``)
+
+    // Header
+    const nameHeader = "Skill".padEnd(this.SKILL_NAME_WIDTH)
+    const descHeader = "Description".padEnd(this.SKILL_DESC_WIDTH)
+    lines.push(`  ${nameHeader} ${descHeader} Tokens`)
+    lines.push(`  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
+
+    // Sort by tokens descending
+    const sortedSkills = [...analysis.availableSkills].sort((a, b) => b.tokens - a.tokens)
+
+    for (const skill of sortedSkills) {
+      const name =
+        skill.name.length > this.SKILL_NAME_WIDTH
+          ? skill.name.substring(0, this.SKILL_NAME_WIDTH - 1) + "\u2026"
+          : skill.name.padEnd(this.SKILL_NAME_WIDTH)
+
+      const desc =
+        skill.description.length > this.SKILL_DESC_WIDTH
+          ? skill.description.substring(0, this.SKILL_DESC_WIDTH - 1) + "\u2026"
+          : skill.description.padEnd(this.SKILL_DESC_WIDTH)
+
+      const tokens = `~${this.formatNumber(skill.tokens)}`.padStart(7)
+
+      lines.push(`  ${name} ${desc} ${tokens}`)
+    }
+
+    lines.push(`  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
+    lines.push(`  Total: ~${this.formatNumber(total)} tokens (${analysis.availableSkills.length} skills available)`)
+    lines.push(``)
+    lines.push(
+      `  Note: Full skill tool description is ~${this.formatNumber(analysis.skillToolDescriptionTokens)} tokens (includes boilerplate).`
+    )
+
+    return lines
+  }
+
+  private formatLoadedSkills(analysis: SkillAnalysis): string[] {
+    const lines: string[] = []
+    const total = analysis.totalLoadedTokens
+
+    lines.push(``)
+    lines.push(`\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550`)
+    lines.push(`LOADED SKILLS (on-demand content)`)
+    lines.push(`\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
+    lines.push(``)
+    lines.push(`Skills loaded during this session via the skill tool.`)
+    lines.push(``)
+
+    // Header
+    const nameHeader = "Skill".padEnd(this.SKILL_NAME_WIDTH)
+    lines.push(`  ${nameHeader} Message #     Tokens     Calls`)
+    lines.push(`  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
+
+    for (const skill of analysis.loadedSkills) {
+      const name =
+        skill.name.length > this.SKILL_NAME_WIDTH
+          ? skill.name.substring(0, this.SKILL_NAME_WIDTH - 1) + "\u2026"
+          : skill.name.padEnd(this.SKILL_NAME_WIDTH)
+
+      const msgNum = `#${skill.firstMessageIndex}`.padStart(10)
+      const tokens = this.formatNumber(skill.totalTokens).padStart(10)
+      const calls = `${skill.callCount}x`.padStart(9)
+
+      lines.push(`  ${name} ${msgNum} ${tokens} ${calls}`)
+    }
+
+    lines.push(`  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
+    lines.push(
+      `  Total: ${this.formatNumber(total)} tokens (${analysis.loadedSkills.length} skill${analysis.loadedSkills.length !== 1 ? "s" : ""} loaded)`
+    )
+    lines.push(``)
+    lines.push(`  Note: Loaded skill content stays in context (protected from pruning).`)
+
+    return lines
   }
 
   private collectTopEntries(analysis: TokenAnalysis, limit: number): CategoryEntry[] {
