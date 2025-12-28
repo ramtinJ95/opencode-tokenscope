@@ -33,7 +33,10 @@ export type SessionMessagePart =
 
 export interface ToolState {
   status: "pending" | "running" | "completed" | "error"
+  input?: Record<string, unknown>
   output?: string
+  title?: string
+  metadata?: Record<string, unknown>
 }
 
 export interface CategoryEntry {
@@ -79,6 +82,7 @@ export interface TokenAnalysis {
   contextBreakdown?: ContextBreakdown
   toolEstimates?: ToolSchemaEstimate[]
   cacheEfficiency?: CacheEfficiency
+  skillAnalysis?: SkillAnalysis
 }
 
 export interface TokenModel {
@@ -170,6 +174,31 @@ export interface ToolSchemaEstimate {
   hasComplexArgs: boolean
 }
 
+// Skill analysis types
+
+export interface AvailableSkill {
+  name: string
+  description: string
+  tokens: number
+}
+
+export interface LoadedSkill {
+  name: string
+  callCount: number
+  firstMessageIndex: number
+  tokens: number
+  totalTokens: number
+  content: string
+}
+
+export interface SkillAnalysis {
+  availableSkills: AvailableSkill[]
+  loadedSkills: LoadedSkill[]
+  totalAvailableTokens: number
+  totalLoadedTokens: number
+  skillToolDescriptionTokens: number
+}
+
 // Cache efficiency types
 
 export interface CacheEfficiency {
@@ -231,6 +260,7 @@ export interface TokenscopeConfig {
   enableToolSchemaEstimation: boolean
   enableCacheEfficiency: boolean
   enableSubagentAnalysis: boolean
+  enableSkillAnalysis: boolean
 }
 
 // Context analysis result
