@@ -32,6 +32,7 @@ export const DEFAULT_TOKENSCOPE_CONFIG: TokenscopeConfig = {
   enableToolSchemaEstimation: true,
   enableCacheEfficiency: true,
   enableSubagentAnalysis: true,
+  enableSkillAnalysis: true,
 }
 
 let TOKENSCOPE_CONFIG_CACHE: TokenscopeConfig | null = null
