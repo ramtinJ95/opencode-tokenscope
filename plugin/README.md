@@ -152,6 +152,54 @@ cat token-usage-output.txt
 - **Multi-Tokenizer Support**: Uses official tokenizers (tiktoken for OpenAI, transformers for others)
 - **Configurable Sections**: Enable/disable analysis features via `tokenscope-config.json`
 
+### Skill Analysis (New)
+- **Available Skills**: Shows all skills listed in the skill tool definition with their token cost
+- **Loaded Skills**: Tracks skills loaded during the session with call counts
+- **Cumulative Token Tracking**: Accurately counts token cost when skills are called multiple times
+
+## Understanding OpenCode Skill Behavior
+
+This section explains how OpenCode handles skills and why the token counting works the way it does.
+
+### How Skills Work
+
+Skills are on-demand instructions that agents can load via the `skill` tool. They have two token consumption points:
+
+1. **Available Skills List**: Skill names and descriptions are embedded in the `skill` tool's description as XML. This is part of the system prompt and costs tokens on **every API call**.
+
+2. **Loaded Skill Content**: When an agent calls `skill({ name: "my-skill" })`, the full SKILL.md content is loaded and returned as a tool result.
+
+### Why Multiple Skill Calls Multiply Token Cost
+
+**Important**: OpenCode does **not** deduplicate skill content. Each time the same skill is called, the full content is added to context again as a new tool result.
+
+This means if you call `skill({ name: "git-release" })` 3 times and it contains 500 tokens:
+- Total context cost = 500 × 3 = **1,500 tokens**
+
+This behavior is by design in OpenCode. You can verify this in the source code:
+
+| Component | Source Link |
+|-----------|-------------|
+| Skill tool execution | [packages/opencode/src/tool/skill.ts](https://github.com/sst/opencode/blob/main/packages/opencode/src/tool/skill.ts) |
+| Tool result handling | [packages/opencode/src/session/message-v2.ts](https://github.com/sst/opencode/blob/main/packages/opencode/src/session/message-v2.ts) |
+| Skill pruning protection | [packages/opencode/src/session/compaction.ts](https://github.com/sst/opencode/blob/main/packages/opencode/src/session/compaction.ts) |
+
+### Skill Content is Protected from Pruning
+
+OpenCode protects skill tool results from being pruned during context management. From the [compaction.ts source](https://github.com/sst/opencode/blob/main/packages/opencode/src/session/compaction.ts):
+
+```typescript
+const PRUNE_PROTECTED_TOOLS = ["skill"]
+```
+
+This means loaded skill content stays in context for the duration of the session (unless full session compaction/summarization occurs).
+
+### Recommendations
+
+- **Call skills sparingly**: Since each call adds full content, avoid calling the same skill multiple times
+- **Monitor skill token usage**: Use TokenScope to see which skills consume the most tokens
+- **Consider skill size**: Large skills (1000+ tokens) can quickly inflate context when called repeatedly
+
 ## Example Output
 
 ```
@@ -341,7 +389,8 @@ The plugin includes a `tokenscope-config.json` file with these defaults:
   "enableContextBreakdown": true,
   "enableToolSchemaEstimation": true,
   "enableCacheEfficiency": true,
-  "enableSubagentAnalysis": true
+  "enableSubagentAnalysis": true,
+  "enableSkillAnalysis": true
 }
 ```
 
