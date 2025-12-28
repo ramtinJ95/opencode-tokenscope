@@ -18,7 +18,38 @@ import { TokenizerManager } from "./tokenizer"
 
 // Model Resolution
 
+export interface ModelAndProvider {
+  model: TokenModel
+  providerID: string
+  modelID: string
+}
+
 export class ModelResolver {
+  resolveModelAndProvider(messages: SessionMessage[]): ModelAndProvider {
+    let detectedProviderID = "anthropic"
+    let detectedModelID = "claude-sonnet-4-20250514"
+
+    for (const message of [...messages].reverse()) {
+      if (message.info.providerID) {
+        detectedProviderID = this.canonicalize(message.info.providerID) || detectedProviderID
+      }
+      if (message.info.modelID) {
+        detectedModelID = message.info.modelID
+      }
+      if (message.info.providerID && message.info.modelID) {
+        break
+      }
+    }
+
+    const model = this.resolveTokenModel(messages)
+
+    return {
+      model,
+      providerID: detectedProviderID,
+      modelID: detectedModelID,
+    }
+  }
+
   resolveTokenModel(messages: SessionMessage[]): TokenModel {
     for (const message of [...messages].reverse()) {
       const modelID = this.canonicalize(message.info.modelID)
