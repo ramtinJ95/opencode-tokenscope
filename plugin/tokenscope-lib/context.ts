@@ -61,19 +61,17 @@ export class ContextAnalyzer {
   private async runExport(sessionID: string): Promise<ExportedSession | null> {
     try {
       const { $ } = await import("bun")
-      const result = await $`opencode export ${sessionID}`.text()
+      // Use .quiet() to capture streams separately, then use only stdout
+      // This avoids stderr ("Exporting session:") being mixed with JSON
+      const { stdout } = await $`opencode export ${sessionID}`.quiet()
+      const result = stdout.toString()
 
-      // Find the start of JSON - the output format is:
-      // "Exporting session: <id>{...json...}"
-      // Note: There's no newline between the prefix and the JSON
-      const jsonStartIndex = result.indexOf("{")
-      if (jsonStartIndex === -1) {
-        console.error(`No JSON found in opencode export output for session ${sessionID}`)
+      if (!result.trim()) {
+        console.error(`No output from opencode export for session ${sessionID}`)
         return null
       }
 
-      const jsonContent = result.slice(jsonStartIndex)
-      return JSON.parse(jsonContent) as ExportedSession
+      return JSON.parse(result) as ExportedSession
     } catch (error) {
       console.error(`Failed to run opencode export for session ${sessionID}:`, error)
       return null
@@ -561,3 +559,4 @@ interface ToolCallInfo {
   argNames: string[]
   argTypes: Record<string, string>
 }
+
