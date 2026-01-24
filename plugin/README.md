@@ -23,11 +23,11 @@ Track and optimize your token usage across system prompts, user messages, tool o
    }
    ```
 
-3. **Create the `/tokenscope` command** by creating `~/.config/opencode/command/tokenscope.md`:
+3. **Create the `/tokenscope` command** by creating `~/.config/opencode/commands/tokenscope.md`:
 
 ```bash
-mkdir -p ~/.config/opencode/command
-cat > ~/.config/opencode/command/tokenscope.md << 'EOF'
+mkdir -p ~/.config/opencode/commands
+cat > ~/.config/opencode/commands/tokenscope.md << 'EOF'
 ---
 description: Analyze token usage across the current session with detailed breakdowns by category
 ---
@@ -402,7 +402,7 @@ Set any option to `false` to hide that section from the output.
 
 1. Verify `tokenscope.md` exists:
    ```bash
-   ls ~/.config/opencode/command/tokenscope.md
+   ls ~/.config/opencode/commands/tokenscope.md
    ```
 2. If missing, create it (see Installation step 3)
 3. Restart OpenCode completely

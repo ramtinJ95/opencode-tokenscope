@@ -87,7 +87,7 @@ echo_info "All prerequisites met"
 echo_step "2/5 Preparing directories..."
 mkdir -p "$OPENCODE_DIR/plugin"
 mkdir -p "$OPENCODE_DIR/plugin/tokenscope-lib"
-mkdir -p "$OPENCODE_DIR/command"
+mkdir -p "$OPENCODE_DIR/commands"
 echo_info "Directories ready"
 
 # Download files
@@ -108,7 +108,7 @@ FILES=(
     "plugin/package.json"
     "plugin/tokenscope-config.json"
     "plugin/install.sh"
-    "command/tokenscope.md"
+    "commands/tokenscope.md"
 )
 
 for file in "${FILES[@]}"; do
@@ -124,7 +124,7 @@ for file in "${FILES[@]}"; do
         elif [ "$dir" = "plugin/tokenscope-lib" ]; then
             mv "$TEMP_DIR/$filename" "$OPENCODE_DIR/plugin/tokenscope-lib/$filename"
         else
-            mv "$TEMP_DIR/$filename" "$OPENCODE_DIR/command/$filename"
+            mv "$TEMP_DIR/$filename" "$OPENCODE_DIR/commands/$filename"
         fi
     else
         echo_error "Failed to download $file"
@@ -174,7 +174,7 @@ REQUIRED_FILES=(
     "$OPENCODE_DIR/plugin/tokenscope-config.json"
     "$OPENCODE_DIR/plugin/node_modules/js-tiktoken"
     "$OPENCODE_DIR/plugin/node_modules/@huggingface/transformers"
-    "$OPENCODE_DIR/command/tokenscope.md"
+    "$OPENCODE_DIR/commands/tokenscope.md"
 )
 
 all_present=true
@@ -209,7 +209,7 @@ echo "╚═══════════════════════�
 echo ""
 echo_info "Version: $INSTALLED_VERSION"
 echo_info "Plugin installed at: $OPENCODE_DIR/plugin/tokenscope.ts"
-echo_info "Command installed at: $OPENCODE_DIR/command/tokenscope.md"
+echo_info "Command installed at: $OPENCODE_DIR/commands/tokenscope.md"
 echo ""
 echo_step "Next steps:"
 echo "  1. Restart OpenCode"
