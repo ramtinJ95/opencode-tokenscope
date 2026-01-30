@@ -24,7 +24,7 @@ export const TokenAnalyzerPlugin: Plugin = async ({ client }) => {
   const contentCollector = new ContentCollector()
   const analysisEngine = new TokenAnalysisEngine(tokenizerManager, contentCollector)
   const costCalculator = new CostCalculator(pricingData)
-  const subagentAnalyzer = new SubagentAnalyzer(client, costCalculator, pricingData)
+  const subagentAnalyzer = new SubagentAnalyzer(client, costCalculator)
   const contextAnalyzer = new ContextAnalyzer(tokenizerManager)
   const skillAnalyzer = new SkillAnalyzer(client, tokenizerManager)
   const formatter = new OutputFormatter(costCalculator)

@@ -1,13 +1,12 @@
 // SubagentAnalyzer - analyzes child sessions from Task tool calls
 
-import type { SessionMessage, SubagentSummary, SubagentAnalysis, ChildSession, ModelPricing } from "./types"
+import type { SessionMessage, SubagentSummary, SubagentAnalysis, ChildSession } from "./types"
 import { CostCalculator } from "./cost"
 
 export class SubagentAnalyzer {
   constructor(
     private client: any,
-    private costCalculator: CostCalculator,
-    private pricingData: Record<string, ModelPricing>
+    private costCalculator: CostCalculator
   ) {}
 
   async analyzeChildSessions(parentSessionID: string): Promise<SubagentAnalysis> {
@@ -100,7 +99,7 @@ export class SubagentAnalyzer {
       }
 
       const totalTokens = inputTokens + outputTokens + reasoningTokens + cacheReadTokens + cacheWriteTokens
-      const pricing = this.getPricing(modelName)
+      const pricing = this.costCalculator.getPricing(modelName)
       const estimatedCost =
         (inputTokens / 1_000_000) * pricing.input +
         ((outputTokens + reasoningTokens) / 1_000_000) * pricing.output +
@@ -132,17 +131,5 @@ export class SubagentAnalyzer {
     if (match) return match[1]
     const words = title.split(/\s+/)
     return words[0]?.toLowerCase() || "subagent"
-  }
-
-  private getPricing(modelName: string): ModelPricing {
-    const normalizedName = modelName.includes("/") ? modelName.split("/").pop() || modelName : modelName
-    if (this.pricingData[normalizedName]) return this.pricingData[normalizedName]
-
-    const lowerModel = normalizedName.toLowerCase()
-    for (const [key, pricing] of Object.entries(this.pricingData)) {
-      if (lowerModel.startsWith(key.toLowerCase())) return pricing
-    }
-
-    return this.pricingData["default"] || { input: 1, output: 3, cacheWrite: 0, cacheRead: 0 }
   }
 }
