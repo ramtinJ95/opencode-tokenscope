@@ -154,6 +154,7 @@ cat token-usage-output.txt
 
 ### Skill Analysis
 - **Available Skills**: Shows all skills listed in the skill tool definition with their token cost
+- **Available Subagents**: Shows all subagents listed in the Task tool definition with their token cost
 - **Loaded Skills**: Tracks skills loaded during the session with call counts
 - **Cumulative Token Tracking**: Accurately counts token cost when skills are called multiple times
 
