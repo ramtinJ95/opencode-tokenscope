@@ -271,14 +271,27 @@ export class SkillAnalyzer {
 
     const xmlContent = availableSkillsMatch[1]
 
-    // Parse each <skill> entry
-    const skillRegex = /<skill>\s*<name>([^<]+)<\/name>\s*<description>([^<]*)<\/description>\s*<\/skill>/gi
-    let match
+    // Parse each <skill> block first, then extract known tags.
+    // This keeps parsing resilient when upstream adds nested tags
+    // (for example, <location> in anomalyco/opencode).
+    const skillBlockRegex = /<skill>([\s\S]*?)<\/skill>/gi
+    let blockMatch
 
-    while ((match = skillRegex.exec(xmlContent)) !== null) {
+    while ((blockMatch = skillBlockRegex.exec(xmlContent)) !== null) {
+      const block = blockMatch[1]
+      const nameMatch = block.match(/<name>([\s\S]*?)<\/name>/i)
+      const descriptionMatch = block.match(/<description>([\s\S]*?)<\/description>/i)
+
+      const name = nameMatch?.[1]?.trim() ?? ""
+      const description = descriptionMatch?.[1]?.trim() ?? ""
+
+      if (!name || !description) {
+        continue
+      }
+
       skills.push({
-        name: match[1].trim(),
-        description: match[2].trim(),
+        name,
+        description,
       })
     }
 

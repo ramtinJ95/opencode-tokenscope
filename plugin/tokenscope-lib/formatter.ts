@@ -97,6 +97,7 @@ export class OutputFormatter {
       analysis.cacheReadTokens,
       analysis.cacheWriteTokens,
       analysis.assistantMessageCount,
+      analysis.apiCallCount,
       analysis.mostRecentInput,
       analysis.mostRecentOutput,
       analysis.mostRecentReasoning,
@@ -125,6 +126,7 @@ export class OutputFormatter {
     cacheReadTokens: number,
     cacheWriteTokens: number,
     assistantMessageCount: number,
+    apiCallCount: number,
     mostRecentInput: number,
     mostRecentOutput: number,
     mostRecentReasoning: number,
@@ -231,9 +233,14 @@ export class OutputFormatter {
     // 5. SESSION TOTALS
     lines.push(``)
     lines.push(`\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550`)
-    lines.push(`SESSION TOTALS (All ${assistantMessageCount} API calls)`)
+    lines.push(`SESSION TOTALS (All ${apiCallCount} API calls)`)
     lines.push(`\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
     lines.push(``)
+    if (assistantMessageCount !== apiCallCount) {
+      lines.push(`Assistant messages observed: ${assistantMessageCount} (structural count)`)
+      lines.push(``)
+    }
+
     lines.push(`Total tokens processed across the entire session (for cost calculation):`)
     lines.push(``)
     lines.push(`  Input tokens:      ${this.formatNumber(inputTokens).padStart(10)} (fresh tokens across all calls)`)
@@ -355,7 +362,7 @@ export class OutputFormatter {
         const costStr = cost.isSubscription
           ? `$${subagent.estimatedCost.toFixed(4)}`
           : `$${subagent.apiCost.toFixed(4)}`
-        const tokensStr = `(${this.formatNumber(subagent.totalTokens)} tokens, ${subagent.assistantMessageCount} calls)`
+        const tokensStr = `(${this.formatNumber(subagent.totalTokens)} tokens, ${subagent.apiCallCount} calls)`
         lines.push(`  ${label} ${costStr.padStart(10)}  ${tokensStr}`)
       }
       lines.push(`\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
@@ -378,10 +385,10 @@ export class OutputFormatter {
         : subagentAnalysis.totalApiCost
       const grandTotalCost = mainCost + subagentTotalCost
       const grandTotalTokens = sessionTotal + subagentAnalysis.totalTokens
-      const grandTotalApiCalls = assistantMessageCount + subagentAnalysis.totalApiCalls
+      const grandTotalApiCalls = apiCallCount + subagentAnalysis.totalApiCalls
 
       lines.push(
-        `  Main session:      $${mainCost.toFixed(4).padStart(10)}    ${this.formatNumber(sessionTotal).padStart(10)}         ${assistantMessageCount.toString().padStart(5)}`
+        `  Main session:      $${mainCost.toFixed(4).padStart(10)}    ${this.formatNumber(sessionTotal).padStart(10)}         ${apiCallCount.toString().padStart(5)}`
       )
       lines.push(
         `  Subagents:         $${subagentTotalCost.toFixed(4).padStart(10)}    ${this.formatNumber(subagentAnalysis.totalTokens).padStart(10)}         ${subagentAnalysis.totalApiCalls.toString().padStart(5)}`
@@ -392,7 +399,7 @@ export class OutputFormatter {
       )
     } else {
       lines.push(
-        `  Session:           $${mainCost.toFixed(4).padStart(10)}    ${this.formatNumber(sessionTotal).padStart(10)}         ${assistantMessageCount.toString().padStart(5)}`
+        `  Session:           $${mainCost.toFixed(4).padStart(10)}    ${this.formatNumber(sessionTotal).padStart(10)}         ${apiCallCount.toString().padStart(5)}`
       )
     }
 

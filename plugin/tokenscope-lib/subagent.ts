@@ -41,7 +41,7 @@ export class SubagentAnalyzer {
           result.totalTokens += summary.totalTokens
           result.totalApiCost += summary.apiCost
           result.totalEstimatedCost += summary.estimatedCost
-          result.totalApiCalls += summary.assistantMessageCount
+          result.totalApiCalls += summary.apiCallCount
         }
 
         const nestedAnalysis = await this.analyzeChildSessions(child.id)
@@ -80,12 +80,25 @@ export class SubagentAnalyzer {
         cacheWriteTokens = 0
       let apiCost = 0,
         assistantMessageCount = 0,
+        telemetryApiCalls = 0,
+        stepFinishCount = 0,
         modelName = "unknown"
 
       for (const message of messages) {
+        stepFinishCount += message.parts.filter((part) => part.type === "step-finish").length
+
         if (message.info.role === "assistant") {
           assistantMessageCount++
           const tokens = message.info.tokens
+          const tokenTotal =
+            (Number(tokens?.input) || 0) +
+            (Number(tokens?.output) || 0) +
+            (Number(tokens?.reasoning) || 0) +
+            (Number(tokens?.cache?.read) || 0) +
+            (Number(tokens?.cache?.write) || 0)
+          if (tokenTotal > 0 || (Number(message.info.cost) || 0) > 0) {
+            telemetryApiCalls++
+          }
           if (tokens) {
             inputTokens += Number(tokens.input) || 0
             outputTokens += Number(tokens.output) || 0
@@ -97,6 +110,8 @@ export class SubagentAnalyzer {
           if (message.info.modelID) modelName = message.info.modelID
         }
       }
+
+      const apiCallCount = stepFinishCount > 0 ? stepFinishCount : telemetryApiCalls
 
       const totalTokens = inputTokens + outputTokens + reasoningTokens + cacheReadTokens + cacheWriteTokens
       const pricing = this.costCalculator.getPricing(modelName)
@@ -119,6 +134,7 @@ export class SubagentAnalyzer {
         apiCost,
         estimatedCost,
         assistantMessageCount,
+        apiCallCount,
       }
     } catch (error) {
       console.error(`Failed to analyze child session ${child.id}:`, error)

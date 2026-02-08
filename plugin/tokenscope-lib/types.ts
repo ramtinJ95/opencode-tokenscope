@@ -10,7 +10,7 @@ export interface SessionMessageInfo {
   role: string
   modelID?: string
   providerID?: string
-  system?: string[]
+  system?: string | string[]
   tokens?: TokenUsage
   cost?: number
 }
@@ -37,6 +37,11 @@ export interface ToolState {
   output?: string
   title?: string
   metadata?: Record<string, unknown>
+  time?: {
+    start?: number
+    end?: number
+    compacted?: number
+  }
 }
 
 export interface CategoryEntry {
@@ -68,6 +73,7 @@ export interface TokenAnalysis {
   cacheReadTokens: number
   cacheWriteTokens: number
   assistantMessageCount: number
+  apiCallCount: number
   mostRecentInput: number
   mostRecentOutput: number
   mostRecentReasoning: number
@@ -133,6 +139,7 @@ export interface SubagentSummary {
   apiCost: number
   estimatedCost: number
   assistantMessageCount: number
+  apiCallCount: number
 }
 
 export interface SubagentAnalysis {
