@@ -445,11 +445,20 @@ export class TokenAnalysisEngine {
 
     const recentApiInputTotal = mostRecentInput + mostRecentCacheRead
     const localUserAndTools = analysis.categories.user.totalTokens + analysis.categories.tools.totalTokens
-    const inferredSystemTokens = Math.max(0, recentApiInputTotal - localUserAndTools)
+    const inferredPromptOverheadTokens = Math.max(0, recentApiInputTotal - localUserAndTools)
+    const hasExplicitSystem = analysis.categories.system.totalTokens > 0
+    const strongInferenceSignal =
+      inferredPromptOverheadTokens >= 300 &&
+      inferredPromptOverheadTokens >= recentApiInputTotal * 0.15 &&
+      inferredPromptOverheadTokens >= localUserAndTools * 0.1
 
-    if (inferredSystemTokens > 0 && analysis.categories.system.totalTokens === 0) {
-      analysis.categories.system.totalTokens = inferredSystemTokens
-      analysis.categories.system.entries = [{ label: "System (inferred from API)", tokens: inferredSystemTokens }]
+    if (inferredPromptOverheadTokens >= 50 && !hasExplicitSystem) {
+      const inferredLabel = strongInferenceSignal
+        ? "System (inferred from API telemetry)"
+        : "Unattributed prompt overhead (inferred)"
+
+      analysis.categories.system.totalTokens = inferredPromptOverheadTokens
+      analysis.categories.system.entries = [{ label: inferredLabel, tokens: inferredPromptOverheadTokens }]
       analysis.categories.system.allEntries = analysis.categories.system.entries
     }
 

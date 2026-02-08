@@ -154,26 +154,25 @@ export class ContextAnalyzer {
         }
       }
 
-      // Check for project tree with <files> tags
-      if (promptLower.includes("<files>")) {
-        const filesMatch = prompt.match(/<files>[\s\S]*?<\/files>/i)
-        if (filesMatch) {
-          const filesTokens = await this.tokenizerManager.countTokens(filesMatch[0], tokenModel)
+      // Check for project tree with modern <directories> tags
+      // (fallback to legacy <files> tags)
+      if (promptLower.includes("<directories>") || promptLower.includes("<files>")) {
+        const treeMatch = prompt.match(/<directories>[\s\S]*?<\/directories>/i) ?? prompt.match(/<files>[\s\S]*?<\/files>/i)
+        if (treeMatch) {
+          const filesTokens = await this.tokenizerManager.countTokens(treeMatch[0], tokenModel)
           breakdown.projectTree.tokens += filesTokens
           breakdown.projectTree.identified = true
 
-          // Count file references
-          const fileMatches = filesMatch[0].match(/\n\s+[\w\-\.]+\.[a-z]{1,5}/g)
-          if (fileMatches) {
-            breakdown.projectTree.fileCount += fileMatches.length
-          }
+          breakdown.projectTree.fileCount += this.countProjectTreeEntries(treeMatch[0])
         }
       }
 
       // Check for custom instructions
       if (promptLower.includes("instructions from:") || promptLower.includes("agents.md")) {
         // Try to extract just the instructions section
-        const instructionMatches = prompt.match(/Instructions from:[\s\S]*?(?=Instructions from:|<env>|<files>|$)/gi)
+        const instructionMatches = prompt.match(
+          /Instructions from:[\s\S]*?(?=Instructions from:|<env>|<files>|<directories>|$)/gi
+        )
         if (instructionMatches) {
           for (const match of instructionMatches) {
             const instrTokens = await this.tokenizerManager.countTokens(match, tokenModel)
@@ -222,6 +221,7 @@ export class ContextAnalyzer {
           (promptLower.includes("assistant") && promptLower.includes("software engineering"))) &&
         !promptLower.includes("<env>") &&
         !promptLower.includes("<files>") &&
+        !promptLower.includes("<directories>") &&
         !promptLower.includes("<functions>")
       ) {
         breakdown.baseSystemPrompt.tokens += tokens
@@ -232,6 +232,7 @@ export class ContextAnalyzer {
         prompt.length > 500 &&
         !promptLower.includes("<env>") &&
         !promptLower.includes("<files>") &&
+        !promptLower.includes("<directories>") &&
         !promptLower.includes("<functions>") &&
         !promptLower.includes("instructions from:")
       ) {
@@ -254,19 +255,38 @@ export class ContextAnalyzer {
    */
   private extractSystemPrompts(exported: ExportedSession): string[] {
     const prompts: Set<string> = new Set()
-
-    for (const message of exported.messages) {
-      // Assistant messages contain system[] in info
-      if (message.info.role === "assistant" && message.info.system) {
-        for (const prompt of message.info.system) {
-          if (prompt && prompt.trim()) {
-            prompts.add(prompt.trim())
+    const addPrompt = (value?: string | string[]) => {
+      if (Array.isArray(value)) {
+        for (const prompt of value) {
+          const trimmed = (prompt ?? "").trim()
+          if (trimmed) {
+            prompts.add(trimmed)
           }
         }
+        return
+      }
+
+      const trimmed = (value ?? "").trim()
+      if (trimmed) {
+        prompts.add(trimmed)
+      }
+    }
+
+    for (const message of exported.messages) {
+      if (message.info.role === "user" || message.info.role === "assistant") {
+        addPrompt(message.info.system)
       }
     }
 
     return Array.from(prompts)
+  }
+
+  private countProjectTreeEntries(section: string): number {
+    return section
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+      .filter((line) => !/^<\/?(files|directories)>$/i.test(line)).length
   }
 
   /**

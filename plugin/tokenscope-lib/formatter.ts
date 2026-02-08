@@ -72,6 +72,9 @@ export class OutputFormatter {
       { label: "REASONING", tokens: analysis.categories.reasoning.totalTokens },
     ]
     const topEntries = this.collectTopEntries(analysis, 5)
+    const hasInferredSystemEstimate = analysis.categories.system.entries.some((entry) =>
+      entry.label.toLowerCase().includes("inferred")
+    )
 
     const toolStats = new Map<string, { tokens: number; calls: number }>()
     for (const [toolName, calls] of analysis.toolCallCounts.entries()) {
@@ -107,6 +110,7 @@ export class OutputFormatter {
       outputCategories,
       topEntries,
       toolEntries,
+      hasInferredSystemEstimate,
       costEstimate,
       analysis.subagentAnalysis,
       analysis.contextBreakdown,
@@ -136,6 +140,7 @@ export class OutputFormatter {
     outputCategories: Array<{ label: string; tokens: number }>,
     topEntries: CategoryEntry[],
     toolEntries: Array<{ label: string; tokens: number; calls: number }>,
+    hasInferredSystemEstimate: boolean,
     cost: CostEstimate,
     subagentAnalysis?: SubagentAnalysis,
     contextBreakdown?: ContextBreakdown,
@@ -168,6 +173,9 @@ export class OutputFormatter {
     }
     lines.push(``)
     lines.push(`  Subtotal: ${this.formatNumber(inputTotal)} estimated input tokens`)
+    if (hasInferredSystemEstimate) {
+      lines.push(`  Note: inferred system/overhead values are heuristic estimates from API telemetry.`)
+    }
     lines.push(``)
 
     const outputTotal = outputCategories.reduce((sum, cat) => sum + cat.tokens, 0)

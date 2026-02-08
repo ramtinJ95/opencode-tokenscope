@@ -252,7 +252,7 @@ export interface ExportedMessage {
 export interface ExportedMessageInfo {
   id: string
   role: "user" | "assistant"
-  system?: string[]
+  system?: string | string[]
   tools?: Record<string, boolean>
   tokens?: TokenUsage
   cost?: number
