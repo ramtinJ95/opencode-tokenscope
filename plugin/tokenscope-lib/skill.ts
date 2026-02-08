@@ -4,6 +4,7 @@ import type {
   SessionMessage,
   SkillAnalysis,
   AvailableSkill,
+  AvailableSubagent,
   LoadedSkill,
   TokenModel,
   TokenscopeConfig,
@@ -33,20 +34,31 @@ export class SkillAnalyzer {
 
     const result: SkillAnalysis = {
       availableSkills: [],
+      availableSubagents: [],
       loadedSkills: [],
       totalAvailableTokens: 0,
+      totalAvailableSubagentTokens: 0,
       totalLoadedTokens: 0,
       skillToolDescriptionTokens: 0,
+      taskToolDescriptionTokens: 0,
     }
 
     try {
+      const tools = await this.listTools(providerID, modelID)
+
       // 1. Get available skills from tool.list() API
-      const availableResult = await this.getAvailableSkills(providerID, modelID, tokenModel)
+      const availableResult = await this.getAvailableSkills(tools, tokenModel)
       result.availableSkills = availableResult.skills
       result.totalAvailableTokens = availableResult.totalTokens
       result.skillToolDescriptionTokens = availableResult.descriptionTokens
 
-      // 2. Get loaded skills from session messages
+      // 2. Get available subagents from task tool description
+      const subagentResult = await this.getAvailableSubagents(tools, tokenModel)
+      result.availableSubagents = subagentResult.subagents
+      result.totalAvailableSubagentTokens = subagentResult.totalTokens
+      result.taskToolDescriptionTokens = subagentResult.descriptionTokens
+
+      // 3. Get loaded skills from session messages
       const loadedResult = await this.getLoadedSkills(messages, tokenModel)
       result.loadedSkills = loadedResult.skills
       result.totalLoadedTokens = loadedResult.totalTokens
@@ -58,19 +70,10 @@ export class SkillAnalyzer {
   }
 
   /**
-   * Fetch available skills from the tool.list() API and parse them
+   * Fetch current tool definitions for the provider/model
    */
-  private async getAvailableSkills(
-    providerID: string,
-    modelID: string,
-    tokenModel: TokenModel
-  ): Promise<{ skills: AvailableSkill[]; totalTokens: number; descriptionTokens: number }> {
-    const skills: AvailableSkill[] = []
-    let totalTokens = 0
-    let descriptionTokens = 0
-
+  private async listTools(providerID: string, modelID: string): Promise<any[]> {
     try {
-      // Call the experimental tool list API
       const response = await this.client.tool.list({
         query: {
           provider: providerID,
@@ -78,8 +81,25 @@ export class SkillAnalyzer {
         },
       })
 
-      const tools = (response as any)?.data ?? response ?? []
+      return (response as any)?.data ?? response ?? []
+    } catch (error) {
+      console.error("Failed to fetch tools:", error)
+      return []
+    }
+  }
 
+  /**
+   * Fetch available skills from the tool.list() API and parse them
+   */
+  private async getAvailableSkills(
+    tools: any[],
+    tokenModel: TokenModel
+  ): Promise<{ skills: AvailableSkill[]; totalTokens: number; descriptionTokens: number }> {
+    const skills: AvailableSkill[] = []
+    let totalTokens = 0
+    let descriptionTokens = 0
+
+    try {
       // Find the skill tool
       const skillTool = tools.find((t: any) => t.id === "skill")
       if (!skillTool || !skillTool.description) {
@@ -110,6 +130,131 @@ export class SkillAnalyzer {
     }
 
     return { skills, totalTokens, descriptionTokens }
+  }
+
+  /**
+   * Parse available subagents from task tool description
+   */
+  private async getAvailableSubagents(
+    tools: any[],
+    tokenModel: TokenModel
+  ): Promise<{ subagents: AvailableSubagent[]; totalTokens: number; descriptionTokens: number }> {
+    const subagents: AvailableSubagent[] = []
+    let totalTokens = 0
+    let descriptionTokens = 0
+
+    try {
+      const taskTool = tools.find((t: any) => t.id === "task")
+      if (!taskTool || !taskTool.description) {
+        return { subagents, totalTokens, descriptionTokens }
+      }
+
+      descriptionTokens = await this.tokenizerManager.countTokens(taskTool.description, tokenModel)
+      const parsedSubagents = this.parseAvailableSubagents(taskTool.description)
+
+      for (const subagent of parsedSubagents) {
+        const tokens = await this.tokenizerManager.countTokens(subagent.rawText, tokenModel)
+
+        subagents.push({
+          name: subagent.name,
+          description: subagent.description,
+          tokens,
+        })
+        totalTokens += tokens
+      }
+    } catch (error) {
+      console.error("Failed to analyze available subagents:", error)
+    }
+
+    return { subagents, totalTokens, descriptionTokens }
+  }
+
+  /**
+   * Parse the subagent list from task tool description
+   */
+  private parseAvailableSubagents(
+    description: string
+  ): Array<{ name: string; description: string; rawText: string }> {
+    const subagents: Array<{ name: string; description: string; rawText: string }> = []
+    const lines = description.split(/\r?\n/)
+    const startIndex = lines.findIndex((line) => /available agent types/i.test(line))
+
+    if (startIndex === -1) {
+      return subagents
+    }
+
+    let parsedAnyEntries = false
+    let sawBlankAfterEntries = false
+
+    for (let i = startIndex + 1; i < lines.length; i++) {
+      const trimmed = lines[i].trim()
+
+      if (this.isSubagentSectionBoundary(trimmed)) {
+        break
+      }
+
+      if (trimmed.length === 0) {
+        if (parsedAnyEntries) {
+          sawBlankAfterEntries = true
+        }
+        continue
+      }
+
+      if (!trimmed.startsWith("- ")) {
+        if (parsedAnyEntries) {
+          break
+        }
+        continue
+      }
+
+      if (sawBlankAfterEntries) {
+        break
+      }
+
+      const content = trimmed.slice(2).trim()
+      const firstColon = content.indexOf(":")
+      if (firstColon <= 0) {
+        continue
+      }
+
+      const name = content.slice(0, firstColon).trim()
+      const rawDescription = content.slice(firstColon + 1).trim()
+      if (!name || !rawDescription) {
+        continue
+      }
+
+      if (!this.isLikelySubagentName(name)) {
+        continue
+      }
+
+      subagents.push({
+        name,
+        description: rawDescription.replace(/\s+/g, " ").trim(),
+        rawText: `- ${name}: ${rawDescription}`,
+      })
+      parsedAnyEntries = true
+    }
+
+    return subagents
+  }
+
+  private isLikelySubagentName(name: string): boolean {
+    return /^[A-Za-z0-9][A-Za-z0-9._-]{0,80}$/.test(name)
+  }
+
+  private isSubagentSectionBoundary(line: string): boolean {
+    if (!line) {
+      return false
+    }
+
+    return (
+      /^#{1,6}\s/.test(line) ||
+      /^<example>/i.test(line) ||
+      /^when\s+using\s+the\s+task\s+tool/i.test(line) ||
+      /^when\s+to\s+use\s+the\s+task\s+tool/i.test(line) ||
+      /^usage\s+notes:/i.test(line) ||
+      /^examples?:/i.test(line)
+    )
   }
 
   /**

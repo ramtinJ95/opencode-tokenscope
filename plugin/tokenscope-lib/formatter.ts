@@ -23,6 +23,8 @@ export class OutputFormatter {
   private readonly TOOL_ESTIMATE_LABEL_WIDTH = 18
   private readonly SKILL_NAME_WIDTH = 22
   private readonly SKILL_DESC_WIDTH = 45
+  private readonly SUBAGENT_NAME_WIDTH = 22
+  private readonly SUBAGENT_DESC_WIDTH = 50
 
   private config: TokenscopeConfig | null = null
 
@@ -315,6 +317,9 @@ export class OutputFormatter {
     if (this.config?.enableSkillAnalysis && skillAnalysis) {
       if (skillAnalysis.availableSkills.length > 0) {
         lines.push(...this.formatAvailableSkills(skillAnalysis))
+      }
+      if (skillAnalysis.availableSubagents.length > 0) {
+        lines.push(...this.formatAvailableSubagents(skillAnalysis))
       }
       if (skillAnalysis.loadedSkills.length > 0) {
         lines.push(...this.formatLoadedSkills(skillAnalysis))
@@ -644,6 +649,53 @@ export class OutputFormatter {
     )
     lines.push(``)
     lines.push(`  Note: Loaded skill content stays in context (protected from pruning).`)
+
+    return lines
+  }
+
+  private formatAvailableSubagents(analysis: SkillAnalysis): string[] {
+    const lines: string[] = []
+    const total = analysis.totalAvailableSubagentTokens
+
+    lines.push(``)
+    lines.push(`\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550`)
+    lines.push(`AVAILABLE SUBAGENTS (in task tool definition)`)
+    lines.push(`\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
+    lines.push(``)
+    lines.push(`These subagents are embedded in the task tool description and consume tokens on every API call.`)
+    lines.push(``)
+
+    const nameHeader = "Subagent".padEnd(this.SUBAGENT_NAME_WIDTH)
+    const descHeader = "Description".padEnd(this.SUBAGENT_DESC_WIDTH)
+    lines.push(`  ${nameHeader} ${descHeader} Tokens`)
+    lines.push(`  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
+
+    const sortedSubagents = [...analysis.availableSubagents].sort((a, b) => b.tokens - a.tokens)
+
+    for (const subagent of sortedSubagents) {
+      const name =
+        subagent.name.length > this.SUBAGENT_NAME_WIDTH
+          ? subagent.name.substring(0, this.SUBAGENT_NAME_WIDTH - 1) + "\u2026"
+          : subagent.name.padEnd(this.SUBAGENT_NAME_WIDTH)
+
+      const desc =
+        subagent.description.length > this.SUBAGENT_DESC_WIDTH
+          ? subagent.description.substring(0, this.SUBAGENT_DESC_WIDTH - 1) + "\u2026"
+          : subagent.description.padEnd(this.SUBAGENT_DESC_WIDTH)
+
+      const tokens = `~${this.formatNumber(subagent.tokens)}`.padStart(7)
+
+      lines.push(`  ${name} ${desc} ${tokens}`)
+    }
+
+    lines.push(`  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
+    lines.push(
+      `  Total: ~${this.formatNumber(total)} tokens (${analysis.availableSubagents.length} subagents available)`
+    )
+    lines.push(``)
+    lines.push(
+      `  Note: Full task tool description is ~${this.formatNumber(analysis.taskToolDescriptionTokens)} tokens (includes instructions/examples).`
+    )
 
     return lines
   }

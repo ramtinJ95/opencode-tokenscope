@@ -191,12 +191,21 @@ export interface LoadedSkill {
   content: string
 }
 
+export interface AvailableSubagent {
+  name: string
+  description: string
+  tokens: number
+}
+
 export interface SkillAnalysis {
   availableSkills: AvailableSkill[]
+  availableSubagents: AvailableSubagent[]
   loadedSkills: LoadedSkill[]
   totalAvailableTokens: number
+  totalAvailableSubagentTokens: number
   totalLoadedTokens: number
   skillToolDescriptionTokens: number
+  taskToolDescriptionTokens: number
 }
 
 // Cache efficiency types
