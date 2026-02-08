@@ -544,19 +544,27 @@ export class OutputFormatter {
     const freshBar = this.formatEfficiencyBar(efficiency.freshInputTokens, total)
     lines.push(`    Fresh Input:       ${this.formatNumber(efficiency.freshInputTokens).padStart(10)} tokens   ${freshBar}  ${freshPct}%`)
 
+    if (efficiency.cacheWriteTokens > 0) {
+      const cacheWritePct = total > 0 ? ((efficiency.cacheWriteTokens / total) * 100).toFixed(1) : "0.0"
+      const cacheWriteBar = this.formatEfficiencyBar(efficiency.cacheWriteTokens, total)
+      lines.push(
+        `    Cache Write:      ${this.formatNumber(efficiency.cacheWriteTokens).padStart(10)} tokens   ${cacheWriteBar}  ${cacheWritePct}%`
+      )
+    }
+
     lines.push(`  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
-    lines.push(`  Cache Hit Rate:      ${efficiency.cacheHitRate.toFixed(1)}%`)
+    lines.push(`  Cache Hit Rate:      ${efficiency.cacheHitRate.toFixed(1)}% (cache read / (cache read + fresh input))`)
     lines.push(``)
 
     // Cost analysis
     lines.push(
-      `  Cost Analysis (${modelName} @ $${cost.pricePerMillionInput.toFixed(2)}/M input, $${cost.pricePerMillionCacheRead.toFixed(2)}/M cache read):`
+      `  Cost Analysis (${modelName} @ $${cost.pricePerMillionInput.toFixed(2)}/M input, $${cost.pricePerMillionCacheRead.toFixed(2)}/M cache read, $${cost.pricePerMillionCacheWrite.toFixed(2)}/M cache write):`
     )
     lines.push(
       `    Without caching:   $${efficiency.costWithoutCaching.toFixed(4)}  (${this.formatNumber(total)} tokens x $${cost.pricePerMillionInput.toFixed(2)}/M)`
     )
     lines.push(
-      `    With caching:      $${efficiency.costWithCaching.toFixed(4)}  (fresh x $${cost.pricePerMillionInput.toFixed(2)}/M + cached x $${cost.pricePerMillionCacheRead.toFixed(2)}/M)`
+      `    With caching:      $${efficiency.costWithCaching.toFixed(4)}  (fresh x $${cost.pricePerMillionInput.toFixed(2)}/M + cache read x $${cost.pricePerMillionCacheRead.toFixed(2)}/M + cache write x $${cost.pricePerMillionCacheWrite.toFixed(2)}/M)`
     )
     lines.push(`  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
     lines.push(`  Cost Savings:        $${efficiency.costSavings.toFixed(4)}  (${efficiency.savingsPercent.toFixed(1)}% reduction)`)

@@ -502,15 +502,18 @@ export class ContextAnalyzer {
       }
     }
 
-    const totalInputTokens = totalCacheRead + totalFreshInput
+    const totalInputTokens = totalCacheRead + totalFreshInput + totalCacheWrite
+    const cacheableInputTokens = totalCacheRead + totalFreshInput
 
-    // Cache hit rate
-    const cacheHitRate = totalInputTokens > 0 ? (totalCacheRead / totalInputTokens) * 100 : 0
+    // Cache hit rate (read-hit ratio over cacheable input)
+    const cacheHitRate = cacheableInputTokens > 0 ? (totalCacheRead / cacheableInputTokens) * 100 : 0
 
     // Cost calculations
     const costWithoutCaching = (totalInputTokens / 1_000_000) * pricing.input
     const costWithCaching =
-      (totalFreshInput / 1_000_000) * pricing.input + (totalCacheRead / 1_000_000) * pricing.cacheRead
+      (totalFreshInput / 1_000_000) * pricing.input +
+      (totalCacheRead / 1_000_000) * pricing.cacheRead +
+      (totalCacheWrite / 1_000_000) * pricing.cacheWrite
 
     const costSavings = costWithoutCaching - costWithCaching
     const savingsPercent = costWithoutCaching > 0 ? (costSavings / costWithoutCaching) * 100 : 0
@@ -539,4 +542,3 @@ interface ToolCallInfo {
   argNames: string[]
   argTypes: Record<string, string>
 }
-
