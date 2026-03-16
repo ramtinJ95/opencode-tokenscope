@@ -170,7 +170,7 @@
   "claude-3-sonnet-20240229": {
     "input": 3,
     "output": 15,
-    "cacheWrite": 0.3,
+    "cacheWrite": 3.75,
     "cacheRead": 0.3
   },
   "claude-3.5-haiku": {
@@ -204,10 +204,10 @@
     "cacheRead": 0.1
   },
   "claude-haiku-4.5": {
-    "input": 0,
-    "output": 0,
-    "cacheWrite": 0,
-    "cacheRead": 0
+    "input": 1,
+    "output": 5,
+    "cacheWrite": 1.25,
+    "cacheRead": 0.1
   },
   "claude-opus-4": {
     "input": 15,
@@ -264,16 +264,16 @@
     "cacheRead": 1.5
   },
   "claude-opus-4.5": {
-    "input": 0,
-    "output": 0,
-    "cacheWrite": 0,
-    "cacheRead": 0
+    "input": 5,
+    "output": 25,
+    "cacheWrite": 6.25,
+    "cacheRead": 0.5
   },
   "claude-opus-4.6": {
-    "input": 0,
-    "output": 0,
-    "cacheWrite": 0,
-    "cacheRead": 0
+    "input": 5,
+    "output": 25,
+    "cacheWrite": 6.25,
+    "cacheRead": 0.5
   },
   "claude-opus-41": {
     "input": 0,
@@ -312,10 +312,10 @@
     "cacheRead": 0.3
   },
   "claude-sonnet-4.5": {
-    "input": 0,
-    "output": 0,
-    "cacheWrite": 0,
-    "cacheRead": 0
+    "input": 3,
+    "output": 15,
+    "cacheWrite": 3.75,
+    "cacheRead": 0.3
   },
   "codex-mini-latest": {
     "input": 1.5,
