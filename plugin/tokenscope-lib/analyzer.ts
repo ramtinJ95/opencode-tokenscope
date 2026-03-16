@@ -125,18 +125,30 @@ export class ModelResolver {
 export class ContentCollector {
   collectSystemPrompts(messages: SessionMessage[]): CategoryEntrySource[] {
     const prompts = new Map<string, string>()
+    const addPrompt = (value?: string | string[]) => {
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          const trimmed = (item ?? "").trim()
+          if (trimmed) prompts.set(trimmed, trimmed)
+        }
+        return
+      }
+
+      const trimmed = (value ?? "").trim()
+      if (trimmed) prompts.set(trimmed, trimmed)
+    }
 
     for (const message of messages) {
+      // Current upstream model stores optional system override on user messages.
+      // Keep broader compatibility by accepting either string or string[].
+      if (message.info.role === "user" || message.info.role === "assistant") {
+        addPrompt(message.info.system)
+      }
+
+      // Backward compatibility for older exports that had explicit system role content.
       if (message.info.role === "system") {
         const content = this.extractText(message.parts)
         if (content) prompts.set(content, content)
-      }
-
-      if (message.info.role === "assistant") {
-        for (const prompt of message.info.system ?? []) {
-          const trimmed = (prompt ?? "").trim()
-          if (trimmed) prompts.set(trimmed, trimmed)
-        }
       }
     }
 
@@ -164,6 +176,7 @@ export class ContentCollector {
 
   collectToolOutputs(messages: SessionMessage[]): CategoryEntrySource[] {
     const toolOutputs = new Map<string, string>()
+    const compactedPlaceholder = "[Old tool result content cleared]"
 
     for (const message of messages) {
       for (const part of message.parts) {
@@ -171,7 +184,8 @@ export class ContentCollector {
 
         if (part.state.status !== "completed") continue
 
-        const output = (part.state.output ?? "").toString().trim()
+        const rawOutput = part.state.time?.compacted ? compactedPlaceholder : part.state.output
+        const output = (rawOutput ?? "").toString().trim()
         if (!output) continue
 
         const toolName = part.tool || "tool"
@@ -303,6 +317,7 @@ export class TokenAnalysisEngine {
       cacheReadTokens: 0,
       cacheWriteTokens: 0,
       assistantMessageCount: 0,
+      apiCallCount: 0,
       mostRecentInput: 0,
       mostRecentOutput: 0,
       mostRecentReasoning: 0,
@@ -342,9 +357,26 @@ export class TokenAnalysisEngine {
   }
 
   private applyTelemetryAdjustments(analysis: TokenAnalysis, messages: SessionMessage[]) {
-    const assistants = messages
-      .filter((m) => m.info.role === "assistant" && (m.info?.tokens || m.info?.cost !== undefined))
-      .map((m) => ({ msg: m, tokens: m.info.tokens, cost: m.info.cost ?? 0 }))
+    const assistantMessages = messages.filter((message) => message.info.role === "assistant")
+    const assistants = assistantMessages.map((msg) => ({ msg, tokens: msg.info.tokens, cost: msg.info.cost ?? 0 }))
+
+    const stepFinishCount = messages.reduce((count, message) => {
+      return count + message.parts.filter((part) => part.type === "step-finish").length
+    }, 0)
+
+    const hasApiTelemetry = (message: SessionMessage) => {
+      const tokens = message.info.tokens
+      const tokenTotal =
+        (Number(tokens?.input) || 0) +
+        (Number(tokens?.output) || 0) +
+        (Number(tokens?.reasoning) || 0) +
+        (Number(tokens?.cache?.read) || 0) +
+        (Number(tokens?.cache?.write) || 0)
+      return tokenTotal > 0 || (Number(message.info.cost) || 0) > 0
+    }
+
+    const telemetryApiCalls = assistantMessages.filter(hasApiTelemetry).length
+    const apiCallCount = stepFinishCount > 0 ? stepFinishCount : telemetryApiCalls
 
     let totalInput = 0,
       totalOutput = 0,
@@ -401,7 +433,8 @@ export class TokenAnalysisEngine {
     analysis.reasoningTokens = totalReasoning
     analysis.cacheReadTokens = totalCacheRead
     analysis.cacheWriteTokens = totalCacheWrite
-    analysis.assistantMessageCount = assistants.length
+    analysis.assistantMessageCount = assistantMessages.length
+    analysis.apiCallCount = apiCallCount
     analysis.sessionCost = totalCost
     analysis.mostRecentCost = mostRecentCost
     analysis.mostRecentInput = mostRecentInput
@@ -412,11 +445,20 @@ export class TokenAnalysisEngine {
 
     const recentApiInputTotal = mostRecentInput + mostRecentCacheRead
     const localUserAndTools = analysis.categories.user.totalTokens + analysis.categories.tools.totalTokens
-    const inferredSystemTokens = Math.max(0, recentApiInputTotal - localUserAndTools)
+    const inferredPromptOverheadTokens = Math.max(0, recentApiInputTotal - localUserAndTools)
+    const hasExplicitSystem = analysis.categories.system.totalTokens > 0
+    const strongInferenceSignal =
+      inferredPromptOverheadTokens >= 300 &&
+      inferredPromptOverheadTokens >= recentApiInputTotal * 0.15 &&
+      inferredPromptOverheadTokens >= localUserAndTools * 0.1
 
-    if (inferredSystemTokens > 0 && analysis.categories.system.totalTokens === 0) {
-      analysis.categories.system.totalTokens = inferredSystemTokens
-      analysis.categories.system.entries = [{ label: "System (inferred from API)", tokens: inferredSystemTokens }]
+    if (inferredPromptOverheadTokens >= 50 && !hasExplicitSystem) {
+      const inferredLabel = strongInferenceSignal
+        ? "System (inferred from API telemetry)"
+        : "Unattributed prompt overhead (inferred)"
+
+      analysis.categories.system.totalTokens = inferredPromptOverheadTokens
+      analysis.categories.system.entries = [{ label: inferredLabel, tokens: inferredPromptOverheadTokens }]
       analysis.categories.system.allEntries = analysis.categories.system.entries
     }
 

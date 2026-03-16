@@ -23,6 +23,8 @@ export class OutputFormatter {
   private readonly TOOL_ESTIMATE_LABEL_WIDTH = 18
   private readonly SKILL_NAME_WIDTH = 22
   private readonly SKILL_DESC_WIDTH = 45
+  private readonly SUBAGENT_NAME_WIDTH = 22
+  private readonly SUBAGENT_DESC_WIDTH = 50
 
   private config: TokenscopeConfig | null = null
 
@@ -70,6 +72,9 @@ export class OutputFormatter {
       { label: "REASONING", tokens: analysis.categories.reasoning.totalTokens },
     ]
     const topEntries = this.collectTopEntries(analysis, 5)
+    const hasInferredSystemEstimate = analysis.categories.system.entries.some((entry) =>
+      entry.label.toLowerCase().includes("inferred")
+    )
 
     const toolStats = new Map<string, { tokens: number; calls: number }>()
     for (const [toolName, calls] of analysis.toolCallCounts.entries()) {
@@ -95,6 +100,7 @@ export class OutputFormatter {
       analysis.cacheReadTokens,
       analysis.cacheWriteTokens,
       analysis.assistantMessageCount,
+      analysis.apiCallCount,
       analysis.mostRecentInput,
       analysis.mostRecentOutput,
       analysis.mostRecentReasoning,
@@ -104,6 +110,7 @@ export class OutputFormatter {
       outputCategories,
       topEntries,
       toolEntries,
+      hasInferredSystemEstimate,
       costEstimate,
       analysis.subagentAnalysis,
       analysis.contextBreakdown,
@@ -123,6 +130,7 @@ export class OutputFormatter {
     cacheReadTokens: number,
     cacheWriteTokens: number,
     assistantMessageCount: number,
+    apiCallCount: number,
     mostRecentInput: number,
     mostRecentOutput: number,
     mostRecentReasoning: number,
@@ -132,6 +140,7 @@ export class OutputFormatter {
     outputCategories: Array<{ label: string; tokens: number }>,
     topEntries: CategoryEntry[],
     toolEntries: Array<{ label: string; tokens: number; calls: number }>,
+    hasInferredSystemEstimate: boolean,
     cost: CostEstimate,
     subagentAnalysis?: SubagentAnalysis,
     contextBreakdown?: ContextBreakdown,
@@ -164,6 +173,9 @@ export class OutputFormatter {
     }
     lines.push(``)
     lines.push(`  Subtotal: ${this.formatNumber(inputTotal)} estimated input tokens`)
+    if (hasInferredSystemEstimate) {
+      lines.push(`  Note: inferred system/overhead values are heuristic estimates from API telemetry.`)
+    }
     lines.push(``)
 
     const outputTotal = outputCategories.reduce((sum, cat) => sum + cat.tokens, 0)
@@ -229,9 +241,14 @@ export class OutputFormatter {
     // 5. SESSION TOTALS
     lines.push(``)
     lines.push(`\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550`)
-    lines.push(`SESSION TOTALS (All ${assistantMessageCount} API calls)`)
+    lines.push(`SESSION TOTALS (All ${apiCallCount} API calls)`)
     lines.push(`\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
     lines.push(``)
+    if (assistantMessageCount !== apiCallCount) {
+      lines.push(`Assistant messages observed: ${assistantMessageCount} (structural count)`)
+      lines.push(``)
+    }
+
     lines.push(`Total tokens processed across the entire session (for cost calculation):`)
     lines.push(``)
     lines.push(`  Input tokens:      ${this.formatNumber(inputTokens).padStart(10)} (fresh tokens across all calls)`)
@@ -316,6 +333,9 @@ export class OutputFormatter {
       if (skillAnalysis.availableSkills.length > 0) {
         lines.push(...this.formatAvailableSkills(skillAnalysis))
       }
+      if (skillAnalysis.availableSubagents.length > 0) {
+        lines.push(...this.formatAvailableSubagents(skillAnalysis))
+      }
       if (skillAnalysis.loadedSkills.length > 0) {
         lines.push(...this.formatLoadedSkills(skillAnalysis))
       }
@@ -350,7 +370,7 @@ export class OutputFormatter {
         const costStr = cost.isSubscription
           ? `$${subagent.estimatedCost.toFixed(4)}`
           : `$${subagent.apiCost.toFixed(4)}`
-        const tokensStr = `(${this.formatNumber(subagent.totalTokens)} tokens, ${subagent.assistantMessageCount} calls)`
+        const tokensStr = `(${this.formatNumber(subagent.totalTokens)} tokens, ${subagent.apiCallCount} calls)`
         lines.push(`  ${label} ${costStr.padStart(10)}  ${tokensStr}`)
       }
       lines.push(`\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
@@ -373,10 +393,10 @@ export class OutputFormatter {
         : subagentAnalysis.totalApiCost
       const grandTotalCost = mainCost + subagentTotalCost
       const grandTotalTokens = sessionTotal + subagentAnalysis.totalTokens
-      const grandTotalApiCalls = assistantMessageCount + subagentAnalysis.totalApiCalls
+      const grandTotalApiCalls = apiCallCount + subagentAnalysis.totalApiCalls
 
       lines.push(
-        `  Main session:      $${mainCost.toFixed(4).padStart(10)}    ${this.formatNumber(sessionTotal).padStart(10)}         ${assistantMessageCount.toString().padStart(5)}`
+        `  Main session:      $${mainCost.toFixed(4).padStart(10)}    ${this.formatNumber(sessionTotal).padStart(10)}         ${apiCallCount.toString().padStart(5)}`
       )
       lines.push(
         `  Subagents:         $${subagentTotalCost.toFixed(4).padStart(10)}    ${this.formatNumber(subagentAnalysis.totalTokens).padStart(10)}         ${subagentAnalysis.totalApiCalls.toString().padStart(5)}`
@@ -387,7 +407,7 @@ export class OutputFormatter {
       )
     } else {
       lines.push(
-        `  Session:           $${mainCost.toFixed(4).padStart(10)}    ${this.formatNumber(sessionTotal).padStart(10)}         ${assistantMessageCount.toString().padStart(5)}`
+        `  Session:           $${mainCost.toFixed(4).padStart(10)}    ${this.formatNumber(sessionTotal).padStart(10)}         ${apiCallCount.toString().padStart(5)}`
       )
     }
 
@@ -532,19 +552,27 @@ export class OutputFormatter {
     const freshBar = this.formatEfficiencyBar(efficiency.freshInputTokens, total)
     lines.push(`    Fresh Input:       ${this.formatNumber(efficiency.freshInputTokens).padStart(10)} tokens   ${freshBar}  ${freshPct}%`)
 
+    if (efficiency.cacheWriteTokens > 0) {
+      const cacheWritePct = total > 0 ? ((efficiency.cacheWriteTokens / total) * 100).toFixed(1) : "0.0"
+      const cacheWriteBar = this.formatEfficiencyBar(efficiency.cacheWriteTokens, total)
+      lines.push(
+        `    Cache Write:      ${this.formatNumber(efficiency.cacheWriteTokens).padStart(10)} tokens   ${cacheWriteBar}  ${cacheWritePct}%`
+      )
+    }
+
     lines.push(`  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
-    lines.push(`  Cache Hit Rate:      ${efficiency.cacheHitRate.toFixed(1)}%`)
+    lines.push(`  Cache Hit Rate:      ${efficiency.cacheHitRate.toFixed(1)}% (cache read / (cache read + fresh input))`)
     lines.push(``)
 
     // Cost analysis
     lines.push(
-      `  Cost Analysis (${modelName} @ $${cost.pricePerMillionInput.toFixed(2)}/M input, $${cost.pricePerMillionCacheRead.toFixed(2)}/M cache read):`
+      `  Cost Analysis (${modelName} @ $${cost.pricePerMillionInput.toFixed(2)}/M input, $${cost.pricePerMillionCacheRead.toFixed(2)}/M cache read, $${cost.pricePerMillionCacheWrite.toFixed(2)}/M cache write):`
     )
     lines.push(
       `    Without caching:   $${efficiency.costWithoutCaching.toFixed(4)}  (${this.formatNumber(total)} tokens x $${cost.pricePerMillionInput.toFixed(2)}/M)`
     )
     lines.push(
-      `    With caching:      $${efficiency.costWithCaching.toFixed(4)}  (fresh x $${cost.pricePerMillionInput.toFixed(2)}/M + cached x $${cost.pricePerMillionCacheRead.toFixed(2)}/M)`
+      `    With caching:      $${efficiency.costWithCaching.toFixed(4)}  (fresh x $${cost.pricePerMillionInput.toFixed(2)}/M + cache read x $${cost.pricePerMillionCacheRead.toFixed(2)}/M + cache write x $${cost.pricePerMillionCacheWrite.toFixed(2)}/M)`
     )
     lines.push(`  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
     lines.push(`  Cost Savings:        $${efficiency.costSavings.toFixed(4)}  (${efficiency.savingsPercent.toFixed(1)}% reduction)`)
@@ -644,6 +672,53 @@ export class OutputFormatter {
     )
     lines.push(``)
     lines.push(`  Note: Loaded skill content stays in context (protected from pruning).`)
+
+    return lines
+  }
+
+  private formatAvailableSubagents(analysis: SkillAnalysis): string[] {
+    const lines: string[] = []
+    const total = analysis.totalAvailableSubagentTokens
+
+    lines.push(``)
+    lines.push(`\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550`)
+    lines.push(`AVAILABLE SUBAGENTS (in task tool definition)`)
+    lines.push(`\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
+    lines.push(``)
+    lines.push(`These subagents are embedded in the task tool description and consume tokens on every API call.`)
+    lines.push(``)
+
+    const nameHeader = "Subagent".padEnd(this.SUBAGENT_NAME_WIDTH)
+    const descHeader = "Description".padEnd(this.SUBAGENT_DESC_WIDTH)
+    lines.push(`  ${nameHeader} ${descHeader} Tokens`)
+    lines.push(`  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
+
+    const sortedSubagents = [...analysis.availableSubagents].sort((a, b) => b.tokens - a.tokens)
+
+    for (const subagent of sortedSubagents) {
+      const name =
+        subagent.name.length > this.SUBAGENT_NAME_WIDTH
+          ? subagent.name.substring(0, this.SUBAGENT_NAME_WIDTH - 1) + "\u2026"
+          : subagent.name.padEnd(this.SUBAGENT_NAME_WIDTH)
+
+      const desc =
+        subagent.description.length > this.SUBAGENT_DESC_WIDTH
+          ? subagent.description.substring(0, this.SUBAGENT_DESC_WIDTH - 1) + "\u2026"
+          : subagent.description.padEnd(this.SUBAGENT_DESC_WIDTH)
+
+      const tokens = `~${this.formatNumber(subagent.tokens)}`.padStart(7)
+
+      lines.push(`  ${name} ${desc} ${tokens}`)
+    }
+
+    lines.push(`  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
+    lines.push(
+      `  Total: ~${this.formatNumber(total)} tokens (${analysis.availableSubagents.length} subagents available)`
+    )
+    lines.push(``)
+    lines.push(
+      `  Note: Full task tool description is ~${this.formatNumber(analysis.taskToolDescriptionTokens)} tokens (includes instructions/examples).`
+    )
 
     return lines
   }

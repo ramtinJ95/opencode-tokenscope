@@ -154,6 +154,7 @@ cat token-usage-output.txt
 
 ### Skill Analysis
 - **Available Skills**: Shows all skills listed in the skill tool definition with their token cost
+- **Available Subagents**: Shows all subagents listed in the Task tool definition with their token cost
 - **Loaded Skills**: Tracks skills loaded during the session with call counts
 - **Cumulative Token Tracking**: Accurately counts token cost when skills are called multiple times
 
@@ -180,13 +181,13 @@ This behavior is by design in OpenCode. You can verify this in the source code:
 
 | Component | Source Link |
 |-----------|-------------|
-| Skill tool execution | [packages/opencode/src/tool/skill.ts](https://github.com/sst/opencode/blob/main/packages/opencode/src/tool/skill.ts) |
-| Tool result handling | [packages/opencode/src/session/message-v2.ts](https://github.com/sst/opencode/blob/main/packages/opencode/src/session/message-v2.ts) |
-| Skill pruning protection | [packages/opencode/src/session/compaction.ts](https://github.com/sst/opencode/blob/main/packages/opencode/src/session/compaction.ts) |
+| Skill tool execution | [packages/opencode/src/tool/skill.ts](https://github.com/anomalyco/opencode/blob/dev/packages/opencode/src/tool/skill.ts) |
+| Tool result handling | [packages/opencode/src/session/message-v2.ts](https://github.com/anomalyco/opencode/blob/dev/packages/opencode/src/session/message-v2.ts) |
+| Skill pruning protection | [packages/opencode/src/session/compaction.ts](https://github.com/anomalyco/opencode/blob/dev/packages/opencode/src/session/compaction.ts) |
 
 ### Skill Content is Protected from Pruning
 
-OpenCode protects skill tool results from being pruned during context management. From the [compaction.ts source](https://github.com/sst/opencode/blob/main/packages/opencode/src/session/compaction.ts):
+OpenCode protects skill tool results from being pruned during context management. From the [compaction.ts source](https://github.com/anomalyco/opencode/blob/dev/packages/opencode/src/session/compaction.ts):
 
 ```typescript
 const PRUNE_PROTECTED_TOOLS = ["skill"]

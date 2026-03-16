@@ -7,7 +7,7 @@ export class CostCalculator {
 
   calculateCost(analysis: TokenAnalysis): CostEstimate {
     const pricing = this.getPricing(analysis.model.name)
-    const hasActivity = analysis.assistantMessageCount > 0 && (analysis.inputTokens > 0 || analysis.outputTokens > 0)
+    const hasActivity = analysis.apiCallCount > 0 && (analysis.inputTokens > 0 || analysis.outputTokens > 0)
     const isSubscription = hasActivity && analysis.sessionCost === 0
 
     const estimatedInputCost = (analysis.inputTokens / 1_000_000) * pricing.input
