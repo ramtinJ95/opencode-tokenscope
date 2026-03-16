@@ -83,6 +83,7 @@ export interface TokenAnalysis {
   mostRecentCost: number
   allToolsCalled: string[]
   toolCallCounts: Map<string, number>
+  warnings: string[]
   subagentAnalysis?: SubagentAnalysis
   // New context analysis fields
   contextBreakdown?: ContextBreakdown

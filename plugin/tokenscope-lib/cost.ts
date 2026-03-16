@@ -51,6 +51,19 @@ export class CostCalculator {
     return this.pricingData["default"] || { input: 1, output: 3, cacheWrite: 0, cacheRead: 0 }
   }
 
+  hasPricing(modelName: string): boolean {
+    const normalizedName = this.normalizeModelName(modelName)
+
+    if (this.pricingData[normalizedName]) return true
+
+    const lowerModel = normalizedName.toLowerCase()
+    for (const key of Object.keys(this.pricingData)) {
+      if (lowerModel.startsWith(key.toLowerCase())) return true
+    }
+
+    return false
+  }
+
   private normalizeModelName(modelName: string): string {
     return modelName.includes("/") ? modelName.split("/").pop() || modelName : modelName
   }
