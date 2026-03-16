@@ -14,11 +14,15 @@ import type {
   ContextAnalysisResult,
 } from "./types"
 import { TokenizerManager } from "./tokenizer"
+import { WarningCollector, formatErrorMessage } from "./warnings"
 
 export class ContextAnalyzer {
   private tokenizerManager: TokenizerManager
 
-  constructor(tokenizerManager: TokenizerManager) {
+  constructor(
+    tokenizerManager: TokenizerManager,
+    private warnings?: WarningCollector
+  ) {
     this.tokenizerManager = tokenizerManager
   }
 
@@ -49,7 +53,10 @@ export class ContextAnalyzer {
         result.cacheEfficiency = this.calculateCacheEfficiency(exported, pricing)
       }
     } catch (error) {
-      console.error(`Context analysis failed for session ${sessionID}:`, error)
+      this.warnings?.add(
+        `Context analysis was skipped for session ${sessionID}: ${formatErrorMessage(error)}`,
+        `context-analysis:${sessionID}`
+      )
     }
 
     return result
@@ -67,13 +74,16 @@ export class ContextAnalyzer {
       const result = stdout.toString()
 
       if (!result.trim()) {
-        console.error(`No output from opencode export for session ${sessionID}`)
+        this.warnings?.add(`OpenCode export returned no data for session ${sessionID}. Context sections were skipped.`, `export-empty:${sessionID}`)
         return null
       }
 
       return JSON.parse(result) as ExportedSession
     } catch (error) {
-      console.error(`Failed to run opencode export for session ${sessionID}:`, error)
+      this.warnings?.add(
+        `OpenCode export failed for session ${sessionID}. Context sections were skipped: ${formatErrorMessage(error)}`,
+        `export-failed:${sessionID}`
+      )
       return null
     }
   }

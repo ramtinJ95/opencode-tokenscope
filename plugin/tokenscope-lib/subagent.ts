@@ -2,11 +2,13 @@
 
 import type { SessionMessage, SubagentSummary, SubagentAnalysis, ChildSession } from "./types"
 import { CostCalculator } from "./cost"
+import { WarningCollector, formatErrorMessage } from "./warnings"
 
 export class SubagentAnalyzer {
   constructor(
     private client: any,
-    private costCalculator: CostCalculator
+    private costCalculator: CostCalculator,
+    private warnings?: WarningCollector
   ) {}
 
   async analyzeChildSessions(parentSessionID: string): Promise<SubagentAnalysis> {
@@ -59,7 +61,10 @@ export class SubagentAnalyzer {
         result.totalApiCalls += nestedAnalysis.totalApiCalls
       }
     } catch (error) {
-      console.error(`Failed to fetch child sessions for ${parentSessionID}:`, error)
+      this.warnings?.add(
+        `Subagent analysis was skipped for session ${parentSessionID}: ${formatErrorMessage(error)}`,
+        `subagent-root:${parentSessionID}`
+      )
     }
 
     return result
@@ -137,7 +142,10 @@ export class SubagentAnalyzer {
         apiCallCount,
       }
     } catch (error) {
-      console.error(`Failed to analyze child session ${child.id}:`, error)
+      this.warnings?.add(
+        `A child session could not be analyzed (${child.id}): ${formatErrorMessage(error)}`,
+        `subagent-child:${child.id}`
+      )
       return null
     }
   }

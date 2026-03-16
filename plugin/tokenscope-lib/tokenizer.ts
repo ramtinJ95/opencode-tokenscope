@@ -5,12 +5,15 @@ import fs from "fs/promises"
 import { pathToFileURL } from "url"
 import type { TokenModel } from "./types"
 import { VENDOR_ROOT } from "./config"
+import { WarningCollector, formatErrorMessage } from "./warnings"
 
 export class TokenizerManager {
   private tiktokenCache = new Map<string, any>()
   private transformerCache = new Map<string, any>()
   private tiktokenModule?: Promise<any>
   private transformersModule?: Promise<any>
+
+  constructor(private warnings?: WarningCollector) {}
 
   async countTokens(content: string, model: TokenModel): Promise<number> {
     if (!content.trim()) return 0
@@ -25,7 +28,10 @@ export class TokenizerManager {
           return await this.countWithTransformers(content, model.spec.hub)
       }
     } catch (error) {
-      console.error(`Token counting error for ${model.name}:`, error)
+      this.warnings?.add(
+        `Token counting fell back to approximate mode for model '${model.name}': ${formatErrorMessage(error)}`,
+        `token-count:${model.name}`
+      )
       return this.approximateTokenCount(content)
     }
   }
@@ -98,7 +104,11 @@ export class TokenizerManager {
       const tokenizer = await AutoTokenizer.from_pretrained(hub)
       this.transformerCache.set(hub, tokenizer)
       return tokenizer
-    } catch {
+    } catch (error) {
+      this.warnings?.add(
+        `Could not load the tokenizer '${hub}'. Transformer-based counts will use the approximate fallback instead: ${formatErrorMessage(error)}`,
+        `transformer-load:${hub}`
+      )
       this.transformerCache.set(hub, null)
       return null
     }
