@@ -93,6 +93,7 @@ export class OutputFormatter {
     return this.formatVisualOutput(
       analysis.sessionID,
       analysis.model.name,
+      analysis.warnings,
       analysis.totalTokens,
       analysis.inputTokens,
       analysis.outputTokens,
@@ -123,6 +124,7 @@ export class OutputFormatter {
   private formatVisualOutput(
     sessionID: string,
     modelName: string,
+    warnings: string[],
     totalTokens: number,
     inputTokens: number,
     outputTokens: number,
@@ -158,6 +160,15 @@ export class OutputFormatter {
     lines.push(`Model: ${modelName}`)
     lines.push(`\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550`)
     lines.push(``)
+
+    if (warnings.length > 0) {
+      lines.push(`WARNINGS`)
+      lines.push(`\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
+      for (const warning of warnings) {
+        lines.push(`- ${warning}`)
+      }
+      lines.push(``)
+    }
 
     // 1. TOKEN BREAKDOWN BY CATEGORY
     lines.push(`TOKEN BREAKDOWN BY CATEGORY`)

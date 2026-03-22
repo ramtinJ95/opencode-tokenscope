@@ -11,11 +11,13 @@ import type {
 } from "./types"
 import { isToolPart } from "./types"
 import { TokenizerManager } from "./tokenizer"
+import { WarningCollector, formatErrorMessage } from "./warnings"
 
 export class SkillAnalyzer {
   constructor(
     private client: any,
-    private tokenizerManager: TokenizerManager
+    private tokenizerManager: TokenizerManager,
+    private warnings?: WarningCollector
   ) {}
 
   /**
@@ -63,7 +65,7 @@ export class SkillAnalyzer {
       result.loadedSkills = loadedResult.skills
       result.totalLoadedTokens = loadedResult.totalTokens
     } catch (error) {
-      console.error("Skill analysis failed:", error)
+      this.warnings?.add(`Skill analysis was skipped: ${formatErrorMessage(error)}`, "skill-analysis")
     }
 
     return result
@@ -83,7 +85,10 @@ export class SkillAnalyzer {
 
       return (response as any)?.data ?? response ?? []
     } catch (error) {
-      console.error("Failed to fetch tools:", error)
+      this.warnings?.add(
+        `Could not fetch tool metadata for ${providerID}/${modelID}. Skill and subagent catalog sections were skipped: ${formatErrorMessage(error)}`,
+        `tool-list:${providerID}:${modelID}`
+      )
       return []
     }
   }
@@ -126,7 +131,10 @@ export class SkillAnalyzer {
         totalTokens += tokens
       }
     } catch (error) {
-      console.error("Failed to fetch available skills:", error)
+      this.warnings?.add(
+        `Available skill estimates were skipped: ${formatErrorMessage(error)}`,
+        "available-skills"
+      )
     }
 
     return { skills, totalTokens, descriptionTokens }
@@ -163,7 +171,10 @@ export class SkillAnalyzer {
         totalTokens += tokens
       }
     } catch (error) {
-      console.error("Failed to analyze available subagents:", error)
+      this.warnings?.add(
+        `Available subagent estimates were skipped: ${formatErrorMessage(error)}`,
+        "available-subagents"
+      )
     }
 
     return { subagents, totalTokens, descriptionTokens }

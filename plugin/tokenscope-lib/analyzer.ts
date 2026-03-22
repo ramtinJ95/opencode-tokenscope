@@ -327,6 +327,7 @@ export class TokenAnalysisEngine {
       mostRecentCost: 0,
       allToolsCalled,
       toolCallCounts,
+      warnings: [],
     }
 
     this.applyTelemetryAdjustments(analysis, messages)
