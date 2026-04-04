@@ -603,46 +603,61 @@ export class OutputFormatter {
   private formatAvailableSkills(analysis: SkillAnalysis): string[] {
     const lines: string[] = []
     const total = analysis.totalAvailableTokens
+    const hasSystemPromptCatalog = analysis.availableSkillsContextTokens > 0
 
     lines.push(``)
-    lines.push(`\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550`)
-    lines.push(`AVAILABLE SKILLS (in tool definitions)`)
-    lines.push(`\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
+    lines.push(`══════════════════════════════════════════════════════════════════════════`)
+    lines.push(`AVAILABLE SKILLS (always-available context)`)
+    lines.push(`─────────────────────────────────────────────────────────────────────────`)
     lines.push(``)
-    lines.push(`These skills are listed in the skill tool description and consume tokens on every API call.`)
+    if (hasSystemPromptCatalog) {
+      lines.push(`OpenCode currently includes a verbose skill catalog in the system prompt on every API call.`)
+      lines.push(`The rows below estimate the per-skill XML entries inside that shared catalog.`)
+    } else {
+      lines.push(`These skills were recovered from the skill tool metadata available to this session.`)
+    }
     lines.push(``)
 
-    // Header
     const nameHeader = "Skill".padEnd(this.SKILL_NAME_WIDTH)
     const descHeader = "Description".padEnd(this.SKILL_DESC_WIDTH)
     lines.push(`  ${nameHeader} ${descHeader} Tokens`)
-    lines.push(`  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
+    lines.push(`  ───────────────────────────────────────────────────────────────────────`)
 
-    // Sort by tokens descending
     const sortedSkills = [...analysis.availableSkills].sort((a, b) => b.tokens - a.tokens)
 
     for (const skill of sortedSkills) {
       const name =
         skill.name.length > this.SKILL_NAME_WIDTH
-          ? skill.name.substring(0, this.SKILL_NAME_WIDTH - 1) + "\u2026"
+          ? skill.name.substring(0, this.SKILL_NAME_WIDTH - 1) + "…"
           : skill.name.padEnd(this.SKILL_NAME_WIDTH)
 
       const desc =
         skill.description.length > this.SKILL_DESC_WIDTH
-          ? skill.description.substring(0, this.SKILL_DESC_WIDTH - 1) + "\u2026"
+          ? skill.description.substring(0, this.SKILL_DESC_WIDTH - 1) + "…"
           : skill.description.padEnd(this.SKILL_DESC_WIDTH)
 
       const tokens = `~${this.formatNumber(skill.tokens)}`.padStart(7)
-
       lines.push(`  ${name} ${desc} ${tokens}`)
     }
 
-    lines.push(`  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
+    lines.push(`  ───────────────────────────────────────────────────────────────────────`)
     lines.push(`  Total: ~${this.formatNumber(total)} tokens (${analysis.availableSkills.length} skills available)`)
     lines.push(``)
-    lines.push(
-      `  Note: Full skill tool description is ~${this.formatNumber(analysis.skillToolDescriptionTokens)} tokens (includes boilerplate).`
-    )
+
+    if (hasSystemPromptCatalog) {
+      lines.push(
+        `  Note: Full system-prompt skill catalog is ~${this.formatNumber(analysis.availableSkillsContextTokens)} tokens (includes shared wrapper/preamble).`
+      )
+      if (analysis.skillToolDescriptionTokens > 0) {
+        lines.push(
+          `        Compact skill tool description adds ~${this.formatNumber(analysis.skillToolDescriptionTokens)} tokens more.`
+        )
+      }
+    } else if (analysis.skillToolDescriptionTokens > 0) {
+      lines.push(
+        `  Note: Full skill tool description is ~${this.formatNumber(analysis.skillToolDescriptionTokens)} tokens (includes boilerplate).`
+      )
+    }
 
     return lines
   }

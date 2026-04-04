@@ -60,7 +60,7 @@ function buildFailureReport(sessionID: string | undefined, warnings: string[], f
   return lines.join("\n")
 }
 
-export const TokenAnalyzerPlugin: Plugin = async ({ client }) => {
+export const TokenAnalyzerPlugin: Plugin = async ({ client, serverUrl, directory }) => {
   const pricingData = await loadModelPricing()
   const config = await loadTokenscopeConfig()
 
@@ -89,7 +89,7 @@ export const TokenAnalyzerPlugin: Plugin = async ({ client }) => {
           const analysisEngine = new TokenAnalysisEngine(tokenizerManager, contentCollector)
           const subagentAnalyzer = new SubagentAnalyzer(client, costCalculator, warnings)
           const contextAnalyzer = new ContextAnalyzer(tokenizerManager, warnings)
-          const skillAnalyzer = new SkillAnalyzer(client, tokenizerManager, warnings)
+          const skillAnalyzer = new SkillAnalyzer(client, tokenizerManager, serverUrl, directory, warnings)
           const formatter = new OutputFormatter(costCalculator)
           formatter.setConfig(config)
 

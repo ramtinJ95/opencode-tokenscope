@@ -218,6 +218,7 @@ export interface SkillAnalysis {
   totalAvailableTokens: number
   totalAvailableSubagentTokens: number
   totalLoadedTokens: number
+  availableSkillsContextTokens: number
   skillToolDescriptionTokens: number
   taskToolDescriptionTokens: number
 }

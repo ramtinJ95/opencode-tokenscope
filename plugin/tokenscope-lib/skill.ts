@@ -1,5 +1,7 @@
 // SkillAnalyzer - analyzes skill usage and token consumption
 
+import { pathToFileURL } from "url"
+
 import type {
   SessionMessage,
   SkillAnalysis,
@@ -13,10 +15,42 @@ import { isToolPart } from "./types"
 import { TokenizerManager } from "./tokenizer"
 import { WarningCollector, formatErrorMessage } from "./warnings"
 
+interface ToolListItem {
+  id: string
+  description?: string
+}
+
+interface PermissionRule {
+  permission: string
+  pattern: string
+  action: "allow" | "deny" | "ask"
+}
+
+interface RemoteAgent {
+  name: string
+  description?: string
+  mode?: string
+  permission?: unknown
+}
+
+interface RemoteSkill {
+  name: string
+  description: string
+  location?: string
+}
+
+interface ParsedSkillEntry {
+  name: string
+  description: string
+  rawText: string
+}
+
 export class SkillAnalyzer {
   constructor(
     private client: any,
     private tokenizerManager: TokenizerManager,
+    private serverUrl: URL,
+    private directory: string,
     private warnings?: WarningCollector
   ) {}
 
@@ -41,21 +75,27 @@ export class SkillAnalyzer {
       totalAvailableTokens: 0,
       totalAvailableSubagentTokens: 0,
       totalLoadedTokens: 0,
+      availableSkillsContextTokens: 0,
       skillToolDescriptionTokens: 0,
       taskToolDescriptionTokens: 0,
     }
 
     try {
       const tools = await this.listTools(providerID, modelID)
+      const [agents, skills] = await Promise.all([this.fetchAgents(), this.fetchSkills()])
+      const currentAgent = this.resolveCurrentAgent(messages, agents)
+      const accessibleSkills = this.filterAccessibleSkills(skills, currentAgent)
+      const accessibleSubagents = this.filterAccessibleSubagents(agents, currentAgent)
 
-      // 1. Get available skills from tool.list() API
-      const availableResult = await this.getAvailableSkills(tools, tokenModel)
+      // 1. Get available skills from current OpenCode catalogs / tool metadata
+      const availableResult = await this.getAvailableSkills(tools, accessibleSkills, tokenModel)
       result.availableSkills = availableResult.skills
       result.totalAvailableTokens = availableResult.totalTokens
+      result.availableSkillsContextTokens = availableResult.contextTokens
       result.skillToolDescriptionTokens = availableResult.descriptionTokens
 
-      // 2. Get available subagents from task tool description
-      const subagentResult = await this.getAvailableSubagents(tools, tokenModel)
+      // 2. Get available subagents from current OpenCode catalogs / task tool description
+      const subagentResult = await this.getAvailableSubagents(tools, accessibleSubagents, tokenModel)
       result.availableSubagents = subagentResult.subagents
       result.totalAvailableSubagentTokens = subagentResult.totalTokens
       result.taskToolDescriptionTokens = subagentResult.descriptionTokens
@@ -74,7 +114,7 @@ export class SkillAnalyzer {
   /**
    * Fetch current tool definitions for the provider/model
    */
-  private async listTools(providerID: string, modelID: string): Promise<any[]> {
+  private async listTools(providerID: string, modelID: string): Promise<ToolListItem[]> {
     try {
       const response = await this.client.tool.list({
         query: {
@@ -83,7 +123,8 @@ export class SkillAnalyzer {
         },
       })
 
-      return (response as any)?.data ?? response ?? []
+      const tools = (response as any)?.data ?? response ?? []
+      return Array.isArray(tools) ? (tools as ToolListItem[]) : []
     } catch (error) {
       this.warnings?.add(
         `Could not fetch tool metadata for ${providerID}/${modelID}. Skill and subagent catalog sections were skipped: ${formatErrorMessage(error)}`,
@@ -94,35 +135,52 @@ export class SkillAnalyzer {
   }
 
   /**
-   * Fetch available skills from the tool.list() API and parse them
+   * Fetch available skills from current OpenCode APIs when possible.
+   * Falls back to parsing the tool description for older versions.
    */
   private async getAvailableSkills(
-    tools: any[],
+    tools: ToolListItem[],
+    availableSkills: RemoteSkill[] | undefined,
     tokenModel: TokenModel
-  ): Promise<{ skills: AvailableSkill[]; totalTokens: number; descriptionTokens: number }> {
+  ): Promise<{ skills: AvailableSkill[]; totalTokens: number; contextTokens: number; descriptionTokens: number }> {
     const skills: AvailableSkill[] = []
     let totalTokens = 0
+    let contextTokens = 0
     let descriptionTokens = 0
 
     try {
-      // Find the skill tool
-      const skillTool = tools.find((t: any) => t.id === "skill")
-      if (!skillTool || !skillTool.description) {
-        return { skills, totalTokens, descriptionTokens }
+      if (availableSkills) {
+        const sortedSkills = [...availableSkills].sort((a, b) => a.name.localeCompare(b.name))
+        const skillToolDescription = this.buildSkillToolDescription(sortedSkills)
+        descriptionTokens = await this.tokenizerManager.countTokens(skillToolDescription, tokenModel)
+
+        const systemPromptCatalog = this.buildSkillSystemPrompt(sortedSkills)
+        contextTokens = await this.tokenizerManager.countTokens(systemPromptCatalog, tokenModel)
+
+        for (const skill of sortedSkills) {
+          const entry = this.buildVerboseSkillEntry(skill)
+          const tokens = await this.tokenizerManager.countTokens(entry, tokenModel)
+          skills.push({
+            name: skill.name,
+            description: skill.description,
+            tokens,
+          })
+          totalTokens += tokens
+        }
+
+        return { skills, totalTokens, contextTokens, descriptionTokens }
       }
 
-      // Tokenize the full skill tool description
+      const skillTool = tools.find((t) => t.id === "skill")
+      if (!skillTool?.description) {
+        return { skills, totalTokens, contextTokens, descriptionTokens }
+      }
+
       descriptionTokens = await this.tokenizerManager.countTokens(skillTool.description, tokenModel)
+      const parsedSkills = this.parseAvailableSkills(skillTool.description)
 
-      // Parse the <available_skills> XML from the description
-      const parsedSkills = this.parseAvailableSkillsXml(skillTool.description)
-
-      // Tokenize each skill's contribution
       for (const skill of parsedSkills) {
-        // Reconstruct the XML for this skill to get accurate token count
-        const skillXml = `  <skill>    <name>${skill.name}</name>    <description>${skill.description}</description>  </skill>`
-        const tokens = await this.tokenizerManager.countTokens(skillXml, tokenModel)
-
+        const tokens = await this.tokenizerManager.countTokens(skill.rawText, tokenModel)
         skills.push({
           name: skill.name,
           description: skill.description,
@@ -131,20 +189,19 @@ export class SkillAnalyzer {
         totalTokens += tokens
       }
     } catch (error) {
-      this.warnings?.add(
-        `Available skill estimates were skipped: ${formatErrorMessage(error)}`,
-        "available-skills"
-      )
+      this.warnings?.add(`Available skill estimates were skipped: ${formatErrorMessage(error)}`, "available-skills")
     }
 
-    return { skills, totalTokens, descriptionTokens }
+    return { skills, totalTokens, contextTokens, descriptionTokens }
   }
 
   /**
-   * Parse available subagents from task tool description
+   * Fetch available subagents from current OpenCode APIs when possible.
+   * Falls back to parsing the task tool description for older versions.
    */
   private async getAvailableSubagents(
-    tools: any[],
+    tools: ToolListItem[],
+    availableSubagents: RemoteAgent[] | undefined,
     tokenModel: TokenModel
   ): Promise<{ subagents: AvailableSubagent[]; totalTokens: number; descriptionTokens: number }> {
     const subagents: AvailableSubagent[] = []
@@ -152,8 +209,31 @@ export class SkillAnalyzer {
     let descriptionTokens = 0
 
     try {
-      const taskTool = tools.find((t: any) => t.id === "task")
-      if (!taskTool || !taskTool.description) {
+      const taskTool = tools.find((t) => t.id === "task")
+
+      if (availableSubagents) {
+        const sortedSubagents = [...availableSubagents].sort((a, b) => a.name.localeCompare(b.name))
+
+        if (taskTool?.description) {
+          const filteredDescription = this.buildFilteredTaskDescription(taskTool.description, sortedSubagents)
+          descriptionTokens = await this.tokenizerManager.countTokens(filteredDescription, tokenModel)
+        }
+
+        for (const subagent of sortedSubagents) {
+          const rawText = this.buildSubagentBullet(subagent)
+          const tokens = await this.tokenizerManager.countTokens(rawText, tokenModel)
+          subagents.push({
+            name: subagent.name,
+            description: this.getSubagentDescription(subagent),
+            tokens,
+          })
+          totalTokens += tokens
+        }
+
+        return { subagents, totalTokens, descriptionTokens }
+      }
+
+      if (!taskTool?.description) {
         return { subagents, totalTokens, descriptionTokens }
       }
 
@@ -162,7 +242,6 @@ export class SkillAnalyzer {
 
       for (const subagent of parsedSubagents) {
         const tokens = await this.tokenizerManager.countTokens(subagent.rawText, tokenModel)
-
         subagents.push({
           name: subagent.name,
           description: subagent.description,
@@ -181,7 +260,7 @@ export class SkillAnalyzer {
   }
 
   /**
-   * Parse the subagent list from task tool description
+   * Parse available subagents from the task tool description.
    */
   private parseAvailableSubagents(
     description: string
@@ -234,7 +313,7 @@ export class SkillAnalyzer {
         continue
       }
 
-      if (!this.isLikelySubagentName(name)) {
+      if (!this.isLikelyIdentifier(name)) {
         continue
       }
 
@@ -249,7 +328,102 @@ export class SkillAnalyzer {
     return subagents
   }
 
-  private isLikelySubagentName(name: string): boolean {
+  /**
+   * Parse the available skills list from both current markdown and legacy XML formats.
+   */
+  private parseAvailableSkills(description: string): ParsedSkillEntry[] {
+    const xmlSkills = this.parseAvailableSkillsXml(description)
+    if (xmlSkills.length > 0) {
+      return xmlSkills
+    }
+
+    return this.parseAvailableSkillsMarkdown(description)
+  }
+
+  private parseAvailableSkillsXml(description: string): ParsedSkillEntry[] {
+    const skills: ParsedSkillEntry[] = []
+    const availableSkillsMatch = description.match(/<available_skills>([\s\S]*?)<\/available_skills>/i)
+    if (!availableSkillsMatch) {
+      return skills
+    }
+
+    const xmlContent = availableSkillsMatch[1]
+    const skillBlockRegex = /<skill>([\s\S]*?)<\/skill>/gi
+    let blockMatch: RegExpExecArray | null
+
+    while ((blockMatch = skillBlockRegex.exec(xmlContent)) !== null) {
+      const block = blockMatch[0]
+      const body = blockMatch[1]
+      const nameMatch = body.match(/<name>([\s\S]*?)<\/name>/i)
+      const descriptionMatch = body.match(/<description>([\s\S]*?)<\/description>/i)
+
+      const name = nameMatch?.[1]?.trim() ?? ""
+      const skillDescription = descriptionMatch?.[1]?.trim() ?? ""
+      if (!name || !skillDescription) {
+        continue
+      }
+
+      skills.push({
+        name,
+        description: skillDescription,
+        rawText: block,
+      })
+    }
+
+    return skills
+  }
+
+  private parseAvailableSkillsMarkdown(description: string): ParsedSkillEntry[] {
+    const skills: ParsedSkillEntry[] = []
+    const lines = description.split(/\r?\n/)
+    const startIndex = lines.findIndex((line) => /^##\s+available skills\s*$/i.test(line.trim()))
+
+    if (startIndex === -1) {
+      return skills
+    }
+
+    let parsedAnyEntries = false
+
+    for (let i = startIndex + 1; i < lines.length; i++) {
+      const trimmed = lines[i].trim()
+
+      if (!trimmed) {
+        if (parsedAnyEntries) {
+          break
+        }
+        continue
+      }
+
+      if (/^#{1,6}\s/.test(trimmed)) {
+        break
+      }
+
+      const match = trimmed.match(/^-\s+\*\*([^*]+)\*\*:\s*(.+)$/) ?? trimmed.match(/^-\s+([^:]+):\s*(.+)$/)
+      if (!match) {
+        if (parsedAnyEntries) {
+          break
+        }
+        continue
+      }
+
+      const name = match[1]?.trim() ?? ""
+      const skillDescription = match[2]?.trim() ?? ""
+      if (!name || !skillDescription || !this.isLikelyIdentifier(name)) {
+        continue
+      }
+
+      skills.push({
+        name,
+        description: skillDescription.replace(/\s+/g, " ").trim(),
+        rawText: trimmed,
+      })
+      parsedAnyEntries = true
+    }
+
+    return skills
+  }
+
+  private isLikelyIdentifier(name: string): boolean {
     return /^[A-Za-z0-9][A-Za-z0-9._-]{0,80}$/.test(name)
   }
 
@@ -269,54 +443,12 @@ export class SkillAnalyzer {
   }
 
   /**
-   * Parse the <available_skills> XML from skill tool description
-   */
-  private parseAvailableSkillsXml(description: string): Array<{ name: string; description: string }> {
-    const skills: Array<{ name: string; description: string }> = []
-
-    // Find the <available_skills> section
-    const availableSkillsMatch = description.match(/<available_skills>([\s\S]*?)<\/available_skills>/i)
-    if (!availableSkillsMatch) {
-      return skills
-    }
-
-    const xmlContent = availableSkillsMatch[1]
-
-    // Parse each <skill> block first, then extract known tags.
-    // This keeps parsing resilient when upstream adds nested tags
-    // (for example, <location> in anomalyco/opencode).
-    const skillBlockRegex = /<skill>([\s\S]*?)<\/skill>/gi
-    let blockMatch
-
-    while ((blockMatch = skillBlockRegex.exec(xmlContent)) !== null) {
-      const block = blockMatch[1]
-      const nameMatch = block.match(/<name>([\s\S]*?)<\/name>/i)
-      const descriptionMatch = block.match(/<description>([\s\S]*?)<\/description>/i)
-
-      const name = nameMatch?.[1]?.trim() ?? ""
-      const description = descriptionMatch?.[1]?.trim() ?? ""
-
-      if (!name || !description) {
-        continue
-      }
-
-      skills.push({
-        name,
-        description,
-      })
-    }
-
-    return skills
-  }
-
-  /**
-   * Collect loaded skills from session messages with call count tracking
+   * Collect loaded skills from session messages with call count tracking.
    */
   private async getLoadedSkills(
     messages: SessionMessage[],
     tokenModel: TokenModel
   ): Promise<{ skills: LoadedSkill[]; totalTokens: number }> {
-    // Track skills by name to aggregate call counts
     const skillMap = new Map<
       string,
       {
@@ -331,7 +463,6 @@ export class SkillAnalyzer {
     let messageIndex = 0
 
     for (const message of messages) {
-      // Track message index for user/assistant messages
       if (message.info.role === "user" || message.info.role === "assistant") {
         messageIndex++
       }
@@ -341,21 +472,16 @@ export class SkillAnalyzer {
         if (part.tool !== "skill") continue
         if (part.state.status !== "completed") continue
 
-        // Extract skill name from input or metadata
         const skillName = this.extractSkillName(part.state)
         if (!skillName) continue
 
-        // Get the output content
         const content = (part.state.output ?? "").toString().trim()
         if (!content) continue
 
-        // Check if we've seen this skill before
         const existing = skillMap.get(skillName)
         if (existing) {
-          // Increment call count for existing skill
           existing.callCount++
         } else {
-          // Tokenize the loaded content (only once per unique skill)
           const tokens = await this.tokenizerManager.countTokens(content, tokenModel)
 
           skillMap.set(skillName, {
@@ -369,12 +495,6 @@ export class SkillAnalyzer {
       }
     }
 
-    // Convert map to array and calculate totals
-    // Note: We multiply tokens by callCount because OpenCode does NOT deduplicate
-    // skill content. Each call to the skill tool adds the full content to context
-    // as a new tool result. See OpenCode source:
-    // - Skill tool execution: https://github.com/anomalyco/opencode/blob/dev/packages/opencode/src/tool/skill.ts
-    // - Tool result handling: https://github.com/anomalyco/opencode/blob/dev/packages/opencode/src/session/message-v2.ts
     const skills: LoadedSkill[] = []
     for (const [, skillData] of skillMap) {
       const totalSkillTokens = skillData.tokens * skillData.callCount
@@ -389,27 +509,23 @@ export class SkillAnalyzer {
       totalTokens += totalSkillTokens
     }
 
-    // Sort by total tokens descending
     skills.sort((a, b) => b.totalTokens - a.totalTokens)
 
     return { skills, totalTokens }
   }
 
   /**
-   * Extract skill name from tool state
+   * Extract skill name from tool state.
    */
   private extractSkillName(state: any): string | undefined {
-    // Try input.name first
     if (state.input && typeof state.input === "object" && state.input.name) {
       return String(state.input.name)
     }
 
-    // Try metadata.name
     if (state.metadata && typeof state.metadata === "object" && state.metadata.name) {
       return String(state.metadata.name)
     }
 
-    // Try parsing from title "Loaded skill: {name}"
     if (state.title && typeof state.title === "string") {
       const match = state.title.match(/Loaded skill:\s*(.+)/i)
       if (match) {
@@ -418,5 +534,232 @@ export class SkillAnalyzer {
     }
 
     return undefined
+  }
+
+  private resolveCurrentAgent(messages: SessionMessage[], agents?: RemoteAgent[]): RemoteAgent | undefined {
+    if (!agents || agents.length === 0) {
+      return undefined
+    }
+
+    const agentName = [...messages]
+      .reverse()
+      .map((message) => message.info.agent)
+      .find((value) => typeof value === "string" && value.trim().length > 0)
+
+    if (!agentName) {
+      return undefined
+    }
+
+    return agents.find((agent) => agent.name === agentName)
+  }
+
+  private filterAccessibleSkills(skills?: RemoteSkill[], currentAgent?: RemoteAgent): RemoteSkill[] | undefined {
+    if (!skills) {
+      return undefined
+    }
+
+    const rules = this.getPermissionRules(currentAgent?.permission)
+    const filtered = rules
+      ? skills.filter((skill) => this.evaluatePermission("skill", skill.name, rules).action !== "deny")
+      : skills
+
+    return [...filtered].sort((a, b) => a.name.localeCompare(b.name))
+  }
+
+  private filterAccessibleSubagents(agents?: RemoteAgent[], currentAgent?: RemoteAgent): RemoteAgent[] | undefined {
+    if (!agents) {
+      return undefined
+    }
+
+    const rules = this.getPermissionRules(currentAgent?.permission)
+    const subagents = agents.filter((agent) => agent.mode !== "primary")
+    const filtered = rules
+      ? subagents.filter((agent) => this.evaluatePermission("task", agent.name, rules).action !== "deny")
+      : subagents
+
+    return [...filtered].sort((a, b) => a.name.localeCompare(b.name))
+  }
+
+  private getPermissionRules(value: unknown): PermissionRule[] | undefined {
+    if (!Array.isArray(value)) {
+      return undefined
+    }
+
+    const rules = value.filter(
+      (item): item is PermissionRule =>
+        !!item &&
+        typeof item === "object" &&
+        typeof (item as any).permission === "string" &&
+        typeof (item as any).pattern === "string" &&
+        typeof (item as any).action === "string"
+    )
+
+    return rules.length > 0 ? rules : undefined
+  }
+
+  private evaluatePermission(permission: string, pattern: string, ruleset: PermissionRule[]): PermissionRule {
+    const match = [...ruleset]
+      .reverse()
+      .find(
+        (rule) => this.matchesWildcard(permission, rule.permission) && this.matchesWildcard(pattern, rule.pattern)
+      )
+
+    return match ?? { permission, pattern: "*", action: "ask" }
+  }
+
+  private matchesWildcard(value: string, pattern: string): boolean {
+    const normalizedValue = value.replaceAll("\\", "/")
+    const normalizedPattern = pattern.replaceAll("\\", "/")
+
+    let escaped = normalizedPattern
+      .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+      .replace(/\*/g, ".*")
+      .replace(/\?/g, ".")
+
+    if (escaped.endsWith(" .*")) {
+      escaped = escaped.slice(0, -3) + "( .*)?"
+    }
+
+    const flags = process.platform === "win32" ? "si" : "s"
+    return new RegExp("^" + escaped + "$", flags).test(normalizedValue)
+  }
+
+  private buildVerboseSkillEntry(skill: RemoteSkill): string {
+    const lines = [
+      "  <skill>",
+      `    <name>${skill.name}</name>`,
+      `    <description>${skill.description}</description>`,
+    ]
+
+    if (skill.location) {
+      lines.push(`    <location>${pathToFileURL(skill.location).href}</location>`)
+    }
+
+    lines.push("  </skill>")
+    return lines.join("\n")
+  }
+
+  private buildSkillSystemPrompt(skills: RemoteSkill[]): string {
+    return [
+      "Skills provide specialized instructions and workflows for specific tasks.",
+      "Use the skill tool to load a skill when a task matches its description.",
+      skills.length > 0 ? this.buildVerboseSkillCatalog(skills) : "No skills are currently available.",
+    ].join("\n")
+  }
+
+  private buildVerboseSkillCatalog(skills: RemoteSkill[]): string {
+    return ["<available_skills>", ...skills.map((skill) => this.buildVerboseSkillEntry(skill)), "</available_skills>"].join(
+      "\n"
+    )
+  }
+
+  private buildSkillToolDescription(skills: RemoteSkill[]): string {
+    if (skills.length === 0) {
+      return "Load a specialized skill that provides domain-specific instructions and workflows. No skills are currently available."
+    }
+
+    return [
+      "Load a specialized skill that provides domain-specific instructions and workflows.",
+      "",
+      "When you recognize that a task matches one of the available skills listed below, use this tool to load the full skill instructions.",
+      "",
+      "The skill will inject detailed instructions, workflows, and access to bundled resources (scripts, references, templates) into the conversation context.",
+      "",
+      'Tool output includes a `<skill_content name="...">` block with the loaded content.',
+      "",
+      "The following skills provide specialized sets of instructions for particular tasks",
+      "Invoke this tool to load a skill when a task matches one of the available skills listed below:",
+      "",
+      [
+        "## Available Skills",
+        ...skills.map((skill) => `- **${skill.name}**: ${skill.description}`),
+      ].join("\n"),
+    ].join("\n")
+  }
+
+  private buildSubagentBullet(agent: RemoteAgent): string {
+    return `- ${agent.name}: ${this.getSubagentDescription(agent)}`
+  }
+
+  private getSubagentDescription(agent: RemoteAgent): string {
+    return agent.description ?? "This subagent should only be called manually by the user."
+  }
+
+  private buildFilteredTaskDescription(description: string, agents: RemoteAgent[]): string {
+    const lines = description.split(/\r?\n/)
+    const headerIndex = lines.findIndex((line) => /available agent types/i.test(line))
+    const nextSectionIndex = lines.findIndex((line, index) => index > headerIndex && /^When using the Task tool:/i.test(line.trim()))
+
+    if (headerIndex === -1 || nextSectionIndex === -1) {
+      return description
+    }
+
+    return [
+      ...lines.slice(0, headerIndex + 1),
+      ...agents.map((agent) => this.buildSubagentBullet(agent)),
+      "",
+      ...lines.slice(nextSectionIndex),
+    ].join("\n")
+  }
+
+  private async fetchAgents(): Promise<RemoteAgent[] | undefined> {
+    try {
+      const agents = await this.fetchInternalJson<RemoteAgent[]>("agent")
+      if (Array.isArray(agents)) {
+        return agents
+      }
+    } catch {}
+
+    try {
+      const appAgents = (this.client as any)?.app?.agents
+      if (typeof appAgents === "function") {
+        const response = await appAgents.call((this.client as any).app)
+        const agents = (response as any)?.data ?? response
+        if (Array.isArray(agents)) {
+          return agents as RemoteAgent[]
+        }
+      }
+    } catch {}
+
+    return undefined
+  }
+
+  private async fetchSkills(): Promise<RemoteSkill[] | undefined> {
+    try {
+      const skills = await this.fetchInternalJson<RemoteSkill[]>("skill")
+      if (Array.isArray(skills)) {
+        return skills
+      }
+    } catch {}
+
+    try {
+      const appSkills = (this.client as any)?.app?.skills
+      if (typeof appSkills === "function") {
+        const response = await appSkills.call((this.client as any).app)
+        const skills = (response as any)?.data ?? response
+        if (Array.isArray(skills)) {
+          return skills as RemoteSkill[]
+        }
+      }
+    } catch {}
+
+    return undefined
+  }
+
+  private async fetchInternalJson<T>(pathname: string): Promise<T> {
+    const base = new URL(this.serverUrl)
+    if (!base.pathname.endsWith("/")) {
+      base.pathname += "/"
+    }
+
+    const url = new URL(pathname.replace(/^\//, ""), base)
+    url.searchParams.set("directory", this.directory)
+
+    const response = await fetch(url)
+    if (!response.ok) {
+      throw new Error(`Request failed (${response.status} ${response.statusText})`)
+    }
+
+    return (await response.json()) as T
   }
 }
