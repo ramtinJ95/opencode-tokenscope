@@ -102,11 +102,14 @@ export class OutputFormatter {
       analysis.cacheWriteTokens,
       analysis.assistantMessageCount,
       analysis.apiCallCount,
+      analysis.callsWithCacheRead,
+      analysis.callsWithCacheWrite,
       analysis.mostRecentInput,
       analysis.mostRecentOutput,
       analysis.mostRecentReasoning,
       analysis.mostRecentCacheRead,
       analysis.mostRecentCacheWrite,
+      analysis.mostRecentProviderTotalTokens,
       inputCategories,
       outputCategories,
       topEntries,
@@ -133,11 +136,14 @@ export class OutputFormatter {
     cacheWriteTokens: number,
     assistantMessageCount: number,
     apiCallCount: number,
+    callsWithCacheRead: number,
+    callsWithCacheWrite: number,
     mostRecentInput: number,
     mostRecentOutput: number,
     mostRecentReasoning: number,
     mostRecentCacheRead: number,
     mostRecentCacheWrite: number,
+    mostRecentProviderTotalTokens: number | undefined,
     inputCategories: Array<{ label: string; tokens: number }>,
     outputCategories: Array<{ label: string; tokens: number }>,
     topEntries: CategoryEntry[],
@@ -244,6 +250,12 @@ export class OutputFormatter {
     if (mostRecentReasoning > 0) {
       lines.push(`  Reasoning:         ${this.formatNumber(mostRecentReasoning).padStart(10)} tokens`)
     }
+    if (mostRecentProviderTotalTokens !== undefined) {
+      lines.push(`  Provider total:    ${this.formatNumber(mostRecentProviderTotalTokens).padStart(10)} tokens`)
+    }
+    if (cost.apiMostRecentCost > 0) {
+      lines.push(`  Cost:              $${cost.apiMostRecentCost.toFixed(4)}`)
+    }
     lines.push(`  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
     lines.push(
       `  Total:             ${this.formatNumber(mostRecentInput + mostRecentCacheRead + mostRecentCacheWrite + mostRecentOutput + mostRecentReasoning).padStart(10)} tokens`
@@ -271,6 +283,10 @@ export class OutputFormatter {
     }
     lines.push(`  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
     lines.push(`  Session Total:     ${this.formatNumber(sessionTotal).padStart(10)} tokens (for billing)`)
+    if (apiCallCount > 0) {
+      lines.push(`  Cache read calls:  ${callsWithCacheRead.toString().padStart(10)} / ${apiCallCount}`)
+      lines.push(`  Cache write calls: ${callsWithCacheWrite.toString().padStart(10)} / ${apiCallCount}`)
+    }
 
     // 6. SESSION COST / ESTIMATED SESSION COST
     lines.push(``)

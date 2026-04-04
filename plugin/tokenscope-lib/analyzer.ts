@@ -15,6 +15,7 @@ import type {
 import { isToolPart as toolGuard, isReasoningPart as reasoningGuard, isTextPart as textGuard } from "./types"
 import { OPENAI_MODEL_MAP, TRANSFORMERS_MODEL_MAP, PROVIDER_DEFAULTS } from "./config"
 import { TokenizerManager } from "./tokenizer"
+import { summarizeTelemetry } from "./telemetry"
 
 // Model Resolution
 
@@ -329,11 +330,14 @@ export class TokenAnalysisEngine {
       cacheWriteTokens: 0,
       assistantMessageCount: 0,
       apiCallCount: 0,
+      callsWithCacheRead: 0,
+      callsWithCacheWrite: 0,
       mostRecentInput: 0,
       mostRecentOutput: 0,
       mostRecentReasoning: 0,
       mostRecentCacheRead: 0,
       mostRecentCacheWrite: 0,
+      mostRecentProviderTotalTokens: undefined,
       sessionCost: 0,
       mostRecentCost: 0,
       allToolsCalled,
@@ -369,93 +373,27 @@ export class TokenAnalysisEngine {
   }
 
   private applyTelemetryAdjustments(analysis: TokenAnalysis, messages: SessionMessage[]) {
-    const assistantMessages = messages.filter((message) => message.info.role === "assistant")
-    const assistants = assistantMessages.map((msg) => ({ msg, tokens: msg.info.tokens, cost: msg.info.cost ?? 0 }))
+    const telemetry = summarizeTelemetry(messages)
 
-    const stepFinishCount = messages.reduce((count, message) => {
-      return count + message.parts.filter((part) => part.type === "step-finish").length
-    }, 0)
+    analysis.inputTokens = telemetry.inputTokens
+    analysis.outputTokens = telemetry.outputTokens
+    analysis.reasoningTokens = telemetry.reasoningTokens
+    analysis.cacheReadTokens = telemetry.cacheReadTokens
+    analysis.cacheWriteTokens = telemetry.cacheWriteTokens
+    analysis.assistantMessageCount = telemetry.assistantMessageCount
+    analysis.apiCallCount = telemetry.apiCallCount
+    analysis.callsWithCacheRead = telemetry.callsWithCacheRead
+    analysis.callsWithCacheWrite = telemetry.callsWithCacheWrite
+    analysis.sessionCost = telemetry.sessionCost
+    analysis.mostRecentCost = telemetry.mostRecentCost
+    analysis.mostRecentInput = telemetry.mostRecentInput
+    analysis.mostRecentOutput = telemetry.mostRecentOutput
+    analysis.mostRecentReasoning = telemetry.mostRecentReasoning
+    analysis.mostRecentCacheRead = telemetry.mostRecentCacheRead
+    analysis.mostRecentCacheWrite = telemetry.mostRecentCacheWrite
+    analysis.mostRecentProviderTotalTokens = telemetry.mostRecentProviderTotalTokens
 
-    const hasApiTelemetry = (message: SessionMessage) => {
-      const tokens = message.info.tokens
-      const tokenTotal =
-        (Number(tokens?.input) || 0) +
-        (Number(tokens?.output) || 0) +
-        (Number(tokens?.reasoning) || 0) +
-        (Number(tokens?.cache?.read) || 0) +
-        (Number(tokens?.cache?.write) || 0)
-      return tokenTotal > 0 || (Number(message.info.cost) || 0) > 0
-    }
-
-    const telemetryApiCalls = assistantMessages.filter(hasApiTelemetry).length
-    const apiCallCount = stepFinishCount > 0 ? stepFinishCount : telemetryApiCalls
-
-    let totalInput = 0,
-      totalOutput = 0,
-      totalReasoning = 0
-    let totalCacheRead = 0,
-      totalCacheWrite = 0,
-      totalCost = 0
-
-    for (const { tokens, cost } of assistants) {
-      if (tokens) {
-        totalInput += Number(tokens.input) || 0
-        totalOutput += Number(tokens.output) || 0
-        totalReasoning += Number(tokens.reasoning) || 0
-        totalCacheRead += Number(tokens.cache?.read) || 0
-        totalCacheWrite += Number(tokens.cache?.write) || 0
-      }
-      totalCost += Number(cost) || 0
-    }
-
-    const mostRecentWithUsage = [...assistants]
-      .reverse()
-      .find(
-        ({ tokens }) =>
-          tokens &&
-          (Number(tokens.input) || 0) +
-            (Number(tokens.output) || 0) +
-            (Number(tokens.reasoning) || 0) +
-            (Number(tokens.cache?.read) || 0) +
-            (Number(tokens.cache?.write) || 0) >
-            0
-      ) ?? assistants[assistants.length - 1]
-
-    let mostRecentInput = 0,
-      mostRecentOutput = 0,
-      mostRecentReasoning = 0
-    let mostRecentCacheRead = 0,
-      mostRecentCacheWrite = 0,
-      mostRecentCost = 0
-
-    if (mostRecentWithUsage) {
-      const t = mostRecentWithUsage.tokens
-      if (t) {
-        mostRecentInput = Number(t.input) || 0
-        mostRecentOutput = Number(t.output) || 0
-        mostRecentReasoning = Number(t.reasoning) || 0
-        mostRecentCacheRead = Number(t.cache?.read) || 0
-        mostRecentCacheWrite = Number(t.cache?.write) || 0
-      }
-      mostRecentCost = Number(mostRecentWithUsage.cost) || 0
-    }
-
-    analysis.inputTokens = totalInput
-    analysis.outputTokens = totalOutput
-    analysis.reasoningTokens = totalReasoning
-    analysis.cacheReadTokens = totalCacheRead
-    analysis.cacheWriteTokens = totalCacheWrite
-    analysis.assistantMessageCount = assistantMessages.length
-    analysis.apiCallCount = apiCallCount
-    analysis.sessionCost = totalCost
-    analysis.mostRecentCost = mostRecentCost
-    analysis.mostRecentInput = mostRecentInput
-    analysis.mostRecentOutput = mostRecentOutput
-    analysis.mostRecentReasoning = mostRecentReasoning
-    analysis.mostRecentCacheRead = mostRecentCacheRead
-    analysis.mostRecentCacheWrite = mostRecentCacheWrite
-
-    const recentApiInputTotal = mostRecentInput + mostRecentCacheRead
+    const recentApiInputTotal = telemetry.mostRecentInput + telemetry.mostRecentCacheRead
     const localUserAndTools = analysis.categories.user.totalTokens + analysis.categories.tools.totalTokens
     const inferredPromptOverheadTokens = Math.max(0, recentApiInputTotal - localUserAndTools)
     const hasExplicitSystem = analysis.categories.system.totalTokens > 0

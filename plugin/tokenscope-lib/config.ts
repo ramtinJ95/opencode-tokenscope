@@ -11,8 +11,6 @@ const PACKAGE_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..
 const BUNDLED_TOKENSCOPE_CONFIG_PATH = path.join(PACKAGE_ROOT, "tokenscope-config.json")
 const USER_TOKENSCOPE_CONFIG_PATH = path.join(homedir(), ".config", "opencode", "tokenscope-config.json")
 
-export const VENDOR_ROOT = path.join(PACKAGE_ROOT, "vendor", "node_modules")
-
 // Pricing cache
 let PRICING_CACHE: Record<string, ModelPricing> | null = null
 

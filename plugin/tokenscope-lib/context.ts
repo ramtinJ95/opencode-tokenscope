@@ -14,6 +14,7 @@ import type {
   ContextAnalysisResult,
 } from "./types"
 import { TokenizerManager } from "./tokenizer"
+import { firstCacheWriteTokens, summarizeTelemetry } from "./telemetry"
 import { WarningCollector, formatErrorMessage } from "./warnings"
 
 export class ContextAnalyzer {
@@ -315,16 +316,9 @@ export class ContextAnalyzer {
     exported: ExportedSession,
     breakdown: ContextBreakdown
   ): ContextBreakdown {
-    // Find the first assistant message with cache_write to get total context size
-    let totalCachedTokens = 0
+    // Find the first API call that wrote to cache to estimate total cached context size
+    const totalCachedTokens = firstCacheWriteTokens(exported.messages)
     let enabledToolCount = 0
-
-    for (const message of exported.messages) {
-      if (message.info.role === "assistant" && message.info.tokens?.cache?.write) {
-        totalCachedTokens = message.info.tokens.cache.write
-        break
-      }
-    }
 
     // Count enabled tools from tool calls
     const enabledTools = this.extractEnabledTools(exported)
@@ -519,19 +513,10 @@ export class ContextAnalyzer {
    * Calculate cache efficiency metrics
    */
   private calculateCacheEfficiency(exported: ExportedSession, pricing: ModelPricing): CacheEfficiency {
-    let totalCacheRead = 0
-    let totalFreshInput = 0
-    let totalCacheWrite = 0
-
-    for (const message of exported.messages) {
-      if (message.info.role === "assistant" && message.info.tokens) {
-        const tokens = message.info.tokens
-        totalCacheRead += Number(tokens.cache?.read) || 0
-        totalFreshInput += Number(tokens.input) || 0
-        totalCacheWrite += Number(tokens.cache?.write) || 0
-      }
-    }
-
+    const telemetry = summarizeTelemetry(exported.messages)
+    const totalCacheRead = telemetry.cacheReadTokens
+    const totalFreshInput = telemetry.inputTokens
+    const totalCacheWrite = telemetry.cacheWriteTokens
     const totalInputTokens = totalCacheRead + totalFreshInput + totalCacheWrite
     const cacheableInputTokens = totalCacheRead + totalFreshInput
 

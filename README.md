@@ -136,6 +136,7 @@ cat token-usage-output.txt
 ### Accurate Cost Tracking
 - **Models.dev Pricing Database**: Pricing data synced from models.dev across thousands of provider/model entries
 - **Cache-Aware Pricing**: Properly handles cache read/write tokens with discounted rates
+- **Per-Call Step Telemetry**: Reads stored `step-finish` records so multi-step assistant turns and tool loops count every API call, not just the final step saved on the assistant message
 - **Session-Wide Billing**: Aggregates costs across all API calls in your session
 
 ### Subagent Cost Tracking
@@ -437,6 +438,7 @@ Set any option to `false` to hide that section from the output.
 
 The plugin uses API telemetry (ground truth). If counts seem off:
 - **Expected ~2K difference from TUI**: Plugin analyzes before its own response is added
+- **Approximate fallback warning**: If the report says token counting fell back to approximate mode, reinstall the plugin (`npm install -g @ramtinj95/opencode-tokenscope@latest`) or rerun `~/.config/opencode/plugin/install.sh`
 - **Model detection**: Check that the model name is recognized in the output
 
 ## Privacy & Security

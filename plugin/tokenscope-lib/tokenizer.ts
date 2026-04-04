@@ -1,10 +1,6 @@
 // TokenizerManager - handles token counting with multiple backends
 
-import path from "path"
-import fs from "fs/promises"
-import { pathToFileURL } from "url"
 import type { TokenModel } from "./types"
-import { VENDOR_ROOT } from "./config"
 import { WarningCollector, formatErrorMessage } from "./warnings"
 
 export class TokenizerManager {
@@ -78,7 +74,7 @@ export class TokenizerManager {
 
     let encoder
     try {
-      encoder = encodingForModel(model)
+      encoder = typeof encodingForModel === "function" ? encodingForModel(model) : getEncoding(model)
     } catch {
       encoder = getEncoding("cl100k_base")
     }
@@ -89,7 +85,7 @@ export class TokenizerManager {
 
   private async loadTiktokenModule() {
     if (!this.tiktokenModule) {
-      this.tiktokenModule = this.importFromVendor("js-tiktoken")
+      this.tiktokenModule = this.importRuntimePackage("js-tiktoken")
     }
     return this.tiktokenModule
   }
@@ -116,26 +112,19 @@ export class TokenizerManager {
 
   private async loadTransformersModule() {
     if (!this.transformersModule) {
-      this.transformersModule = this.importFromVendor("@huggingface/transformers")
+      this.transformersModule = this.importRuntimePackage("@huggingface/transformers")
     }
     return this.transformersModule
   }
 
-  private async importFromVendor(pkg: string) {
-    const pkgJsonPath = path.join(VENDOR_ROOT, pkg, "package.json")
-    let data: string
+  private async importRuntimePackage(pkg: string) {
     try {
-      data = await fs.readFile(pkgJsonPath, "utf8")
-    } catch {
+      return await import(pkg)
+    } catch (error) {
       throw new Error(
-        `Token analyzer dependencies missing. Run the install.sh script to install vendor tokenizers.\n` +
-          `Expected path: ${pkgJsonPath}`
+        `Token analyzer dependency '${pkg}' could not be loaded. ` +
+          `Reinstall the npm package or rerun plugin/install.sh. ${formatErrorMessage(error)}`
       )
     }
-
-    const manifest = JSON.parse(data)
-    const entry = manifest.module ?? manifest.main ?? "index.js"
-    const entryPath = path.join(VENDOR_ROOT, pkg, entry)
-    return import(pathToFileURL(entryPath).href)
   }
 }
