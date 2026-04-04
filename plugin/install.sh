@@ -105,6 +105,7 @@ FILES=(
     "plugin/tokenscope-lib/context.ts"
     "plugin/tokenscope-lib/opencode.ts"
     "plugin/tokenscope-lib/skill.ts"
+    "plugin/tokenscope-lib/telemetry.ts"
     "plugin/tokenscope-lib/warnings.ts"
     "plugin/models.json"
     "plugin/package.json"
@@ -148,13 +149,13 @@ fi
 if [ "$UPDATE_MODE" = true ] && [ "$DEPS_EXIST" = true ]; then
     echo_info "Update mode: Dependencies already installed, skipping..."
 else
-    echo_info "This may take 1-2 minutes..."
+    echo_info "Installing runtime dependencies from package.json..."
     cd "$OPENCODE_DIR/plugin"
-    if npm install --prefix "$OPENCODE_DIR/plugin" js-tiktoken@1.0.15 @huggingface/transformers@3.1.2 --save; then
+    if npm install --prefix "$OPENCODE_DIR/plugin" --omit=dev; then
         echo_info "Dependencies installed successfully"
     else
         echo_error "Failed to install dependencies"
-        echo_error "You can try running manually: cd ~/.config/opencode/plugin && npm install"
+        echo_error "You can try running manually: cd ~/.config/opencode/plugin && npm install --omit=dev"
         exit 1
     fi
 fi
@@ -174,6 +175,7 @@ REQUIRED_FILES=(
     "$OPENCODE_DIR/plugin/tokenscope-lib/context.ts"
     "$OPENCODE_DIR/plugin/tokenscope-lib/opencode.ts"
     "$OPENCODE_DIR/plugin/tokenscope-lib/skill.ts"
+    "$OPENCODE_DIR/plugin/tokenscope-lib/telemetry.ts"
     "$OPENCODE_DIR/plugin/tokenscope-lib/warnings.ts"
     "$OPENCODE_DIR/plugin/models.json"
     "$OPENCODE_DIR/plugin/tokenscope-config.json"
