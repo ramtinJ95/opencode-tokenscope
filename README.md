@@ -62,7 +62,7 @@ Then restart OpenCode and run `/tokenscope`
 |---------------------------|----------|
 | `"@ramtinj95/opencode-tokenscope"` | Uses the version installed at install time. **Never auto-updates.** |
 | `"@ramtinj95/opencode-tokenscope@latest"` | Fetches latest version **every time OpenCode starts**. |
-| `"@ramtinj95/opencode-tokenscope@1.4.0"` | Pins to exact version 1.4.0. Never updates. |
+| `"@ramtinj95/opencode-tokenscope@1.6.0"` | Pins to exact version 1.6.0. Never updates. |
 
 To manually update:
 ```bash
@@ -153,7 +153,8 @@ cat token-usage-output.txt
 - **Configurable Sections**: Enable/disable analysis features via `tokenscope-config.json`
 
 ### Skill Analysis
-- **Available Skills**: Shows all skills listed in the skill tool definition with their token cost
+- **Available Skills**: Shows the always-available skill catalog token cost (including the verbose system-prompt catalog OpenCode injects on every API call)
+- **Available Subagents**: Shows all subagents listed in the Task tool definition with their token cost
 - **Loaded Skills**: Tracks skills loaded during the session with call counts
 - **Cumulative Token Tracking**: Accurately counts token cost when skills are called multiple times
 
@@ -163,11 +164,13 @@ This section explains how OpenCode handles skills and why the token counting wor
 
 ### How Skills Work
 
-Skills are on-demand instructions that agents can load via the `skill` tool. They have two token consumption points:
+Skills are on-demand instructions that agents can load via the `skill` tool. They have multiple token consumption points:
 
-1. **Available Skills List**: Skill names and descriptions are embedded in the `skill` tool's description as XML. This is part of the system prompt and costs tokens on **every API call**.
+1. **Always-Available Skill Catalog**: Current OpenCode versions inject a verbose XML skill catalog into the system prompt on **every API call**.
 
-2. **Loaded Skill Content**: When an agent calls `skill({ name: "my-skill" })`, the full SKILL.md content is loaded and returned as a tool result.
+2. **Skill Tool Description**: The `skill` tool also includes a compact markdown list of available skills in its tool description, which also consumes tokens on every API call.
+
+3. **Loaded Skill Content**: When an agent calls `skill({ name: "my-skill" })`, the full SKILL.md content is loaded and returned as a tool result.
 
 ### Why Multiple Skill Calls Multiply Token Cost
 
