@@ -30,13 +30,16 @@ export class ModelResolver {
     let detectedModelID = "claude-sonnet-4-20250514"
 
     for (const message of [...messages].reverse()) {
-      if (message.info.providerID) {
-        detectedProviderID = this.canonicalize(message.info.providerID) || detectedProviderID
+      const providerID = this.getProviderID(message)
+      const modelID = this.getModelID(message)
+
+      if (providerID) {
+        detectedProviderID = this.canonicalize(providerID) || detectedProviderID
       }
-      if (message.info.modelID) {
-        detectedModelID = message.info.modelID
+      if (modelID) {
+        detectedModelID = modelID
       }
-      if (message.info.providerID && message.info.modelID) {
+      if (providerID && modelID) {
         break
       }
     }
@@ -52,8 +55,8 @@ export class ModelResolver {
 
   resolveTokenModel(messages: SessionMessage[]): TokenModel {
     for (const message of [...messages].reverse()) {
-      const modelID = this.canonicalize(message.info.modelID)
-      const providerID = this.canonicalize(message.info.providerID)
+      const modelID = this.canonicalize(this.getModelID(message))
+      const providerID = this.canonicalize(this.getProviderID(message))
 
       const openaiModel = this.resolveOpenAIModel(modelID, providerID)
       if (openaiModel) return openaiModel
@@ -113,6 +116,14 @@ export class ModelResolver {
   private mapOpenAI(modelID?: string): string {
     if (!modelID) return "cl100k_base"
     return OPENAI_MODEL_MAP[modelID] ?? modelID
+  }
+
+  private getProviderID(message: SessionMessage): string | undefined {
+    return message.info.providerID ?? message.info.model?.providerID
+  }
+
+  private getModelID(message: SessionMessage): string | undefined {
+    return message.info.modelID ?? message.info.model?.modelID
   }
 
   private canonicalize(value?: string): string | undefined {

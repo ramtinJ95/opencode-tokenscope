@@ -14,6 +14,7 @@ import { SubagentAnalyzer } from "./tokenscope-lib/subagent"
 import { OutputFormatter } from "./tokenscope-lib/formatter"
 import { ContextAnalyzer } from "./tokenscope-lib/context"
 import { SkillAnalyzer } from "./tokenscope-lib/skill"
+import { fetchSessionMessages, unwrapResponseData } from "./tokenscope-lib/opencode"
 import { WarningCollector, formatErrorMessage } from "./tokenscope-lib/warnings"
 
 const REPORT_FILENAME = "token-usage-output.txt"
@@ -59,7 +60,7 @@ function buildFailureReport(sessionID: string | undefined, warnings: string[], f
   return lines.join("\n")
 }
 
-export const TokenAnalyzerPlugin: Plugin = async ({ client }) => {
+export const TokenAnalyzerPlugin: Plugin = async ({ client, serverUrl, directory }) => {
   const pricingData = await loadModelPricing()
   const config = await loadTokenscopeConfig()
 
@@ -88,7 +89,7 @@ export const TokenAnalyzerPlugin: Plugin = async ({ client }) => {
           const analysisEngine = new TokenAnalysisEngine(tokenizerManager, contentCollector)
           const subagentAnalyzer = new SubagentAnalyzer(client, costCalculator, warnings)
           const contextAnalyzer = new ContextAnalyzer(tokenizerManager, warnings)
-          const skillAnalyzer = new SkillAnalyzer(client, tokenizerManager, warnings)
+          const skillAnalyzer = new SkillAnalyzer(client, tokenizerManager, serverUrl, directory, warnings)
           const formatter = new OutputFormatter(costCalculator)
           formatter.setConfig(config)
 
@@ -103,8 +104,8 @@ export const TokenAnalyzerPlugin: Plugin = async ({ client }) => {
           }
 
           try {
-            const response = await client.session.messages({ path: { id: sessionID } })
-            const messages: SessionMessage[] = ((response as any)?.data ?? response ?? []) as SessionMessage[]
+            const response = await fetchSessionMessages(client, sessionID)
+            const messages: SessionMessage[] = unwrapResponseData<SessionMessage[]>(response ?? [])
 
             if (!Array.isArray(messages) || messages.length === 0) {
               const output = buildFailureReport(sessionID, warnings.list(), `Session ${sessionID} has no messages yet.`)
