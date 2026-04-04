@@ -59,6 +59,7 @@ export interface CategorySummary {
 export interface TokenAnalysis {
   sessionID: string
   model: TokenModel
+  pricingModelName?: string
   categories: {
     system: CategorySummary
     user: CategorySummary

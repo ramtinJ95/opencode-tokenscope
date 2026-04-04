@@ -116,6 +116,7 @@ export const TokenAnalyzerPlugin: Plugin = async ({ client }) => {
             }
 
             const { model: tokenModel, providerID, modelID } = modelResolver.resolveModelAndProvider(messages)
+            const pricingModelName = costCalculator.buildLookupKey(providerID, modelID) || tokenModel.name
 
             if (tokenModel.spec.kind === "approx") {
               warnings.add(
@@ -124,10 +125,10 @@ export const TokenAnalyzerPlugin: Plugin = async ({ client }) => {
               )
             }
 
-            if (!costCalculator.hasPricing(tokenModel.name)) {
+            if (!costCalculator.hasPricing(pricingModelName)) {
               warnings.add(
-                `Pricing for '${tokenModel.name}' was not found in models.json. Cost estimates use the default fallback rates ($1/M input, $3/M output, no cache pricing).`,
-                `missing-pricing:${tokenModel.name}`
+                `Pricing for '${pricingModelName}' was not found in models.json. Cost estimates use the default fallback rates ($1/M input, $3/M output, no cache pricing).`,
+                `missing-pricing:${pricingModelName}`
               )
             }
 
@@ -137,6 +138,7 @@ export const TokenAnalyzerPlugin: Plugin = async ({ client }) => {
               tokenModel,
               args.limitMessages ?? DEFAULT_ENTRY_LIMIT
             )
+            analysis.pricingModelName = pricingModelName
 
             // Subagent analysis (respects config)
             const shouldIncludeSubagents = args.includeSubagents !== false && config.enableSubagentAnalysis
@@ -145,7 +147,7 @@ export const TokenAnalyzerPlugin: Plugin = async ({ client }) => {
             }
 
             // Context analysis (context breakdown, tool estimates, cache efficiency)
-            const pricing = costCalculator.getPricing(tokenModel.name)
+            const pricing = costCalculator.getPricing(pricingModelName)
             const contextResult = await contextAnalyzer.analyze(sessionID, tokenModel, pricing, config)
 
             // Merge context analysis results into main analysis

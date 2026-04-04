@@ -134,7 +134,7 @@ cat token-usage-output.txt
 - **Effective Rate**: Shows what you're actually paying per token vs standard rates
 
 ### Accurate Cost Tracking
-- **41+ Models Supported**: Comprehensive pricing database for Claude, GPT, DeepSeek, Llama, Mistral, and more
+- **Models.dev Pricing Database**: Pricing data synced from models.dev across thousands of provider/model entries
 - **Cache-Aware Pricing**: Properly handles cache read/write tokens with discounted rates
 - **Session-Wide Billing**: Aggregates costs across all API calls in your session
 
@@ -359,7 +359,7 @@ SUMMARY
 
 ## Supported Models
 
-**41+ models with accurate pricing:**
+**Pricing data is synced from models.dev across thousands of provider/model entries:**
 
 ### Claude Models
 - Claude Opus 4.5, 4.1, 4

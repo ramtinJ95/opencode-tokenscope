@@ -87,6 +87,7 @@ export class SubagentAnalyzer {
         assistantMessageCount = 0,
         telemetryApiCalls = 0,
         stepFinishCount = 0,
+        providerID = "",
         modelName = "unknown"
 
       for (const message of messages) {
@@ -112,6 +113,7 @@ export class SubagentAnalyzer {
             cacheWriteTokens += Number(tokens.cache?.write) || 0
           }
           apiCost += Number(message.info.cost) || 0
+          if (message.info.providerID) providerID = message.info.providerID
           if (message.info.modelID) modelName = message.info.modelID
         }
       }
@@ -119,7 +121,8 @@ export class SubagentAnalyzer {
       const apiCallCount = stepFinishCount > 0 ? stepFinishCount : telemetryApiCalls
 
       const totalTokens = inputTokens + outputTokens + reasoningTokens + cacheReadTokens + cacheWriteTokens
-      const pricing = this.costCalculator.getPricing(modelName)
+      const pricingModelName = this.costCalculator.buildLookupKey(providerID, modelName) || modelName
+      const pricing = this.costCalculator.getPricing(pricingModelName)
       const estimatedCost =
         (inputTokens / 1_000_000) * pricing.input +
         ((outputTokens + reasoningTokens) / 1_000_000) * pricing.output +
