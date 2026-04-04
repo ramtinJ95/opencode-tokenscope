@@ -383,7 +383,21 @@ SUMMARY
 
 ## Configuration
 
-The plugin includes a `tokenscope-config.json` file with these defaults:
+TokenScope now supports a stable user override file at:
+
+```bash
+~/.config/opencode/tokenscope-config.json
+```
+
+On startup, the plugin loads config in this order:
+1. `~/.config/opencode/tokenscope-config.json`
+2. bundled package config: `tokenscope-config.json`
+3. in-code defaults
+
+Any missing keys are filled from the built-in defaults, so you can override only the flags you care about.
+This is safer than editing the file inside the global npm package directory, because `npm update -g` can replace that installed package and overwrite local changes.
+
+Default flags:
 
 ```json
 {
@@ -392,6 +406,15 @@ The plugin includes a `tokenscope-config.json` file with these defaults:
   "enableCacheEfficiency": true,
   "enableSubagentAnalysis": true,
   "enableSkillAnalysis": true
+}
+```
+
+Example user override:
+
+```json
+{
+  "enableSubagentAnalysis": false,
+  "enableSkillAnalysis": false
 }
 ```
 

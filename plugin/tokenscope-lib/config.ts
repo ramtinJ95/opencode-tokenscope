@@ -2,11 +2,16 @@
 
 import path from "path"
 import fs from "fs/promises"
+import { homedir } from "os"
 import { fileURLToPath } from "url"
 import type { TokenizerSpec, ModelPricing, TokenscopeConfig } from "./types"
 
 export const DEFAULT_ENTRY_LIMIT = 3
-export const VENDOR_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "vendor", "node_modules")
+const PACKAGE_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..")
+const BUNDLED_TOKENSCOPE_CONFIG_PATH = path.join(PACKAGE_ROOT, "tokenscope-config.json")
+const USER_TOKENSCOPE_CONFIG_PATH = path.join(homedir(), ".config", "opencode", "tokenscope-config.json")
+
+export const VENDOR_ROOT = path.join(PACKAGE_ROOT, "vendor", "node_modules")
 
 // Pricing cache
 let PRICING_CACHE: Record<string, ModelPricing> | null = null
@@ -15,7 +20,7 @@ export async function loadModelPricing(): Promise<Record<string, ModelPricing>> 
   if (PRICING_CACHE) return PRICING_CACHE
 
   try {
-    const modelsPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "models.json")
+    const modelsPath = path.join(PACKAGE_ROOT, "models.json")
     const data = await fs.readFile(modelsPath, "utf8")
     PRICING_CACHE = JSON.parse(data)
     return PRICING_CACHE!
@@ -37,19 +42,28 @@ export const DEFAULT_TOKENSCOPE_CONFIG: TokenscopeConfig = {
 
 let TOKENSCOPE_CONFIG_CACHE: TokenscopeConfig | null = null
 
+async function readTokenscopeConfigFile(configPath: string): Promise<Partial<TokenscopeConfig> | null> {
+  try {
+    const data = await fs.readFile(configPath, "utf8")
+    return JSON.parse(data) as Partial<TokenscopeConfig>
+  } catch {
+    return null
+  }
+}
+
 export async function loadTokenscopeConfig(): Promise<TokenscopeConfig> {
   if (TOKENSCOPE_CONFIG_CACHE) return TOKENSCOPE_CONFIG_CACHE
 
-  try {
-    const configPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "tokenscope-config.json")
-    const data = await fs.readFile(configPath, "utf8")
-    const config = { ...DEFAULT_TOKENSCOPE_CONFIG, ...JSON.parse(data) }
-    TOKENSCOPE_CONFIG_CACHE = config
-    return config
-  } catch {
-    TOKENSCOPE_CONFIG_CACHE = DEFAULT_TOKENSCOPE_CONFIG
-    return DEFAULT_TOKENSCOPE_CONFIG
+  const userConfig = await readTokenscopeConfigFile(USER_TOKENSCOPE_CONFIG_PATH)
+  const bundledConfig = userConfig ? null : await readTokenscopeConfigFile(BUNDLED_TOKENSCOPE_CONFIG_PATH)
+
+  TOKENSCOPE_CONFIG_CACHE = {
+    ...DEFAULT_TOKENSCOPE_CONFIG,
+    ...(bundledConfig ?? {}),
+    ...(userConfig ?? {}),
   }
+
+  return TOKENSCOPE_CONFIG_CACHE
 }
 
 // OpenAI model mapping for tiktoken
