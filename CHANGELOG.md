@@ -11,12 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Switched session and subagent telemetry aggregation to per-call `step-finish` parts, so multi-step/tool-heavy turns count every API call instead of only the final step stored on each assistant message
+- Switched session and subagent telemetry aggregation to per-call `step-finish` parts, so multi-step/tool-heavy turns count every API call instead of only the final step stored on each assistant message, fixing historical undercounting in tool-heavy sessions (#20)
 - Added direct session-derived telemetry details for cache activity and most-recent call cost/total reporting
 
 ### Fixed
 
-- Fixed tokenizer runtime loading to resolve installed npm dependencies from `node_modules` instead of a non-existent `vendor/node_modules` tree
+- Fixed tokenizer runtime loading to resolve installed npm dependencies from `node_modules` instead of a non-existent `vendor/node_modules` tree, fixing npm/script installs that previously fell back to approximate counting (#20)
 - Updated the install script to install runtime dependencies from `package.json`, keeping script installs aligned with the published npm package
 
 ## [1.6.0] - 2026-04-04
