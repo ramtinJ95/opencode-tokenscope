@@ -8,6 +8,11 @@ export interface SessionMessage {
 export interface SessionMessageInfo {
   id: string
   role: string
+  agent?: string
+  model?: {
+    providerID?: string
+    modelID?: string
+  }
   modelID?: string
   providerID?: string
   system?: string | string[]
@@ -254,6 +259,11 @@ export interface ExportedMessage {
 export interface ExportedMessageInfo {
   id: string
   role: "user" | "assistant"
+  agent?: string
+  model?: {
+    providerID?: string
+    modelID?: string
+  }
   system?: string | string[]
   tools?: Record<string, boolean>
   tokens?: TokenUsage

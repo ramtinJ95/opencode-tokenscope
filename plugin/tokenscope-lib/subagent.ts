@@ -2,6 +2,7 @@
 
 import type { SessionMessage, SubagentSummary, SubagentAnalysis, ChildSession } from "./types"
 import { CostCalculator } from "./cost"
+import { fetchSessionChildren, fetchSessionMessages, unwrapResponseData } from "./opencode"
 import { WarningCollector, formatErrorMessage } from "./warnings"
 
 export class SubagentAnalyzer {
@@ -26,8 +27,8 @@ export class SubagentAnalyzer {
     }
 
     try {
-      const childrenResponse = await this.client.session.children({ path: { id: parentSessionID } })
-      const children: ChildSession[] = ((childrenResponse as any)?.data ?? childrenResponse ?? []) as ChildSession[]
+      const childrenResponse = await fetchSessionChildren(this.client, parentSessionID)
+      const children: ChildSession[] = unwrapResponseData<ChildSession[]>(childrenResponse ?? [])
 
       if (!Array.isArray(children) || children.length === 0) return result
 
@@ -72,8 +73,8 @@ export class SubagentAnalyzer {
 
   private async analyzeChildSession(child: ChildSession): Promise<SubagentSummary | null> {
     try {
-      const messagesResponse = await this.client.session.messages({ path: { id: child.id } })
-      const messages: SessionMessage[] = ((messagesResponse as any)?.data ?? messagesResponse ?? []) as SessionMessage[]
+      const messagesResponse = await fetchSessionMessages(this.client, child.id)
+      const messages: SessionMessage[] = unwrapResponseData<SessionMessage[]>(messagesResponse ?? [])
 
       if (!Array.isArray(messages) || messages.length === 0) return null
 
@@ -154,7 +155,7 @@ export class SubagentAnalyzer {
   }
 
   private extractAgentType(title: string): string {
-    const match = title.match(/@(\w+)\s+subagent/i)
+    const match = title.match(/@([A-Za-z0-9._-]+)\s+subagent/i)
     if (match) return match[1]
     const words = title.split(/\s+/)
     return words[0]?.toLowerCase() || "subagent"
