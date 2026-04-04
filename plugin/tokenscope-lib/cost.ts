@@ -6,7 +6,7 @@ export class CostCalculator {
   constructor(private pricingData: Record<string, ModelPricing>) {}
 
   calculateCost(analysis: TokenAnalysis): CostEstimate {
-    const pricing = this.getPricing(analysis.model.name)
+    const pricing = this.getPricing(analysis.pricingModelName ?? analysis.model.name)
     const hasActivity = analysis.apiCallCount > 0 && (analysis.inputTokens > 0 || analysis.outputTokens > 0)
     const isSubscription = hasActivity && analysis.sessionCost === 0
 
@@ -38,33 +38,55 @@ export class CostCalculator {
     }
   }
 
+  buildLookupKey(providerID?: string, modelID?: string): string {
+    const provider = providerID?.trim()
+    const model = modelID?.trim()
+
+    if (!provider) return model ?? ""
+    if (!model) return provider
+
+    const normalizedProvider = provider.toLowerCase()
+    const normalizedModel = model.toLowerCase()
+    if (normalizedModel.startsWith(`${normalizedProvider}/`)) return model
+
+    return `${provider}/${model}`
+  }
+
   getPricing(modelName: string): ModelPricing {
-    const normalizedName = this.normalizeModelName(modelName)
-
-    if (this.pricingData[normalizedName]) return this.pricingData[normalizedName]
-
-    const lowerModel = normalizedName.toLowerCase()
-    for (const [key, pricing] of Object.entries(this.pricingData)) {
-      if (lowerModel.startsWith(key.toLowerCase())) return pricing
-    }
-
-    return this.pricingData["default"] || { input: 1, output: 3, cacheWrite: 0, cacheRead: 0 }
+    return this.findPricing(modelName) ?? this.pricingData["default"] ?? { input: 1, output: 3, cacheWrite: 0, cacheRead: 0 }
   }
 
   hasPricing(modelName: string): boolean {
-    const normalizedName = this.normalizeModelName(modelName)
+    return this.findPricing(modelName) !== undefined
+  }
 
-    if (this.pricingData[normalizedName]) return true
+  private findPricing(modelName: string): ModelPricing | undefined {
+    const rawName = modelName.trim().toLowerCase()
+    if (!rawName) return undefined
 
-    const lowerModel = normalizedName.toLowerCase()
-    for (const key of Object.keys(this.pricingData)) {
-      if (lowerModel.startsWith(key.toLowerCase())) return true
+    if (this.pricingData[rawName]) return this.pricingData[rawName]
+
+    const normalizedName = this.normalizeModelName(rawName)
+    if (this.pricingData[normalizedName]) return this.pricingData[normalizedName]
+
+    return this.findLongestPrefixMatch(rawName) ?? this.findLongestPrefixMatch(normalizedName)
+  }
+
+  private findLongestPrefixMatch(modelName: string): ModelPricing | undefined {
+    let bestMatchLength = -1
+    let bestPricing: ModelPricing | undefined
+
+    for (const [key, pricing] of Object.entries(this.pricingData)) {
+      if (modelName.startsWith(key.toLowerCase()) && key.length > bestMatchLength) {
+        bestMatchLength = key.length
+        bestPricing = pricing
+      }
     }
 
-    return false
+    return bestPricing
   }
 
   private normalizeModelName(modelName: string): string {
-    return modelName.includes("/") ? modelName.split("/").pop() || modelName : modelName
+    return modelName.includes("/") ? modelName.split("/").pop()?.trim().toLowerCase() || modelName : modelName.trim().toLowerCase()
   }
 }

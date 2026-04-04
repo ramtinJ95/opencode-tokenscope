@@ -134,7 +134,7 @@ cat token-usage-output.txt
 - **Effective Rate**: Shows what you're actually paying per token vs standard rates
 
 ### Accurate Cost Tracking
-- **41+ Models Supported**: Comprehensive pricing database for Claude, GPT, DeepSeek, Llama, Mistral, and more
+- **Models.dev Pricing Database**: Pricing data synced from models.dev across thousands of provider/model entries
 - **Cache-Aware Pricing**: Properly handles cache read/write tokens with discounted rates
 - **Session-Wide Billing**: Aggregates costs across all API calls in your session
 
@@ -359,7 +359,7 @@ SUMMARY
 
 ## Supported Models
 
-**41+ models with accurate pricing:**
+**Pricing data is synced from models.dev across thousands of provider/model entries:**
 
 ### Claude Models
 - Claude Opus 4.5, 4.1, 4
@@ -382,7 +382,21 @@ SUMMARY
 
 ## Configuration
 
-The plugin includes a `tokenscope-config.json` file with these defaults:
+TokenScope now supports a stable user override file at:
+
+```bash
+~/.config/opencode/tokenscope-config.json
+```
+
+On startup, the plugin loads config in this order:
+1. `~/.config/opencode/tokenscope-config.json`
+2. bundled package config: `tokenscope-config.json`
+3. in-code defaults
+
+Any missing keys are filled from the built-in defaults, so you can override only the flags you care about.
+This is safer than editing the file inside the global npm package directory, because `npm update -g` can replace that installed package and overwrite local changes.
+
+Default flags:
 
 ```json
 {
@@ -391,6 +405,15 @@ The plugin includes a `tokenscope-config.json` file with these defaults:
   "enableCacheEfficiency": true,
   "enableSubagentAnalysis": true,
   "enableSkillAnalysis": true
+}
+```
+
+Example user override:
+
+```json
+{
+  "enableSubagentAnalysis": false,
+  "enableSkillAnalysis": false
 }
 ```
 
