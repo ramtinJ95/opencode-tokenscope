@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-04-04
+
 ### Changed
 
 - Switched session and subagent telemetry aggregation to per-call `step-finish` parts, so multi-step/tool-heavy turns count every API call instead of only the final step stored on each assistant message
@@ -68,7 +70,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Synced READMEs and removed version tags from feature headers
 - Updated install script for better testing before npm push
 
-[Unreleased]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.6.0...HEAD
+[Unreleased]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.6.1...HEAD
+[1.6.1]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.5.2...v1.6.0
 [1.5.2]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.5.1...v1.5.2
 [1.5.1]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.5.0...v1.5.1
