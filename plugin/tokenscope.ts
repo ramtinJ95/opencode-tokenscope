@@ -176,14 +176,26 @@ export const TokenAnalyzerPlugin: Plugin = async ({ client, serverUrl, directory
             }
 
             const timestamp = new Date().toISOString()
-            const formattedTotal = new Intl.NumberFormat("en-US").format(analysis.totalTokens)
+            const localEstimatedTokens = analysis.totalTokens
+            const mainSessionTelemetryTokens =
+              analysis.inputTokens +
+              analysis.outputTokens +
+              analysis.reasoningTokens +
+              analysis.cacheReadTokens +
+              analysis.cacheWriteTokens
+            const formattedLocalEstimated = new Intl.NumberFormat("en-US").format(localEstimatedTokens)
+            const formattedMainTelemetry = new Intl.NumberFormat("en-US").format(mainSessionTelemetryTokens)
 
-            let summaryMsg = `Token analysis complete! Full report saved to: ${outputPath}\n\nTimestamp: ${timestamp}\nMain session tokens: ${formattedTotal}`
+            let summaryMsg =
+              `Token analysis complete! Full report saved to: ${outputPath}` +
+              `\n\nTimestamp: ${timestamp}` +
+              `\nLocal estimated content tokens: ${formattedLocalEstimated}` +
+              `\nSession telemetry total: ${formattedMainTelemetry}`
 
             if (analysis.subagentAnalysis && analysis.subagentAnalysis.subagents.length > 0) {
               const subagentTokens = new Intl.NumberFormat("en-US").format(analysis.subagentAnalysis.totalTokens)
               const grandTotal = new Intl.NumberFormat("en-US").format(
-                analysis.totalTokens + analysis.subagentAnalysis.totalTokens
+                mainSessionTelemetryTokens + analysis.subagentAnalysis.totalTokens
               )
               summaryMsg += `\nSubagent sessions: ${analysis.subagentAnalysis.subagents.length} (${subagentTokens} tokens)`
               summaryMsg += `\nGrand total: ${grandTotal} tokens`

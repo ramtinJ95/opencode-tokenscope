@@ -21,6 +21,7 @@ export interface SessionMessageInfo {
 }
 
 export interface TokenUsage {
+  total?: number
   input?: number
   output?: number
   reasoning?: number
@@ -80,11 +81,14 @@ export interface TokenAnalysis {
   cacheWriteTokens: number
   assistantMessageCount: number
   apiCallCount: number
+  callsWithCacheRead: number
+  callsWithCacheWrite: number
   mostRecentInput: number
   mostRecentOutput: number
   mostRecentReasoning: number
   mostRecentCacheRead: number
   mostRecentCacheWrite: number
+  mostRecentProviderTotalTokens?: number
   sessionCost: number
   mostRecentCost: number
   allToolsCalled: string[]
