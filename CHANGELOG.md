@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Added available subagent analysis from the Task tool definition, including per-subagent token estimates and total overhead reporting
-- Added warning collection and fallback report output so analysis failures degrade gracefully instead of aborting the session
+- Added warning collection and fallback report output so analysis failures degrade gracefully instead of aborting the session, fixing unsupported-model/TUI failure reports (#15)
 
 ### Changed
 
@@ -24,7 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Added compatibility helpers for newer OpenCode session payloads and route shapes
+- Added compatibility helpers for newer OpenCode session payloads and route shapes, addressing newer OpenCode UI/startup breakage reports (#9, #14)
 - Corrected Claude pricing rates and updated parsing assumptions for current telemetry/export payloads
 - Refreshed the install script to include new library modules required by the latest plugin state
 
