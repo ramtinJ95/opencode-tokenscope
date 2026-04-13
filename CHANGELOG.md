@@ -7,9 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.2] - 2026-04-13
+
 ### Changed
 
-- Switched non-OpenAI token counting from `@huggingface/transformers` to lightweight `@huggingface/tokenizers`, removing the transitive `onnxruntime-node` install dependency
+- Switched non-OpenAI token counting from `@huggingface/transformers` to lightweight `@huggingface/tokenizers`, removing the transitive `onnxruntime-node` install dependency and fixing the CUDA 13 install failure path reported in #22
 - Updated the installer verification to expect `@huggingface/tokenizers` instead of Transformers.js
 - Sanitized non-OpenAI tokenizer fallback warnings so reports say approximation was used instead of surfacing raw Hugging Face auth/network errors, and skip known non-public tokenizer hubs up front
 
@@ -76,7 +78,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Synced READMEs and removed version tags from feature headers
 - Updated install script for better testing before npm push
 
-[Unreleased]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.6.1...HEAD
+[Unreleased]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.6.2...HEAD
+[1.6.2]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.6.1...v1.6.2
 [1.6.1]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.5.2...v1.6.0
 [1.5.2]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.5.1...v1.5.2
