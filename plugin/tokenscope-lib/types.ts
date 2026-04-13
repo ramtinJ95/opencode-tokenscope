@@ -109,7 +109,7 @@ export interface TokenModel {
 
 export type TokenizerSpec =
   | { kind: "tiktoken"; model: string }
-  | { kind: "transformers"; hub: string }
+  | { kind: "huggingface"; hub: string }
   | { kind: "approx" }
 
 export interface CategoryEntrySource {

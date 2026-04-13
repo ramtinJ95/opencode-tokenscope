@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Switched non-OpenAI token counting from `@huggingface/transformers` to lightweight `@huggingface/tokenizers`, removing the transitive `onnxruntime-node` install dependency
+- Updated the installer verification to expect `@huggingface/tokenizers` instead of Transformers.js
+- Sanitized non-OpenAI tokenizer fallback warnings so reports say approximation was used instead of surfacing raw Hugging Face auth/network errors, and skip known non-public tokenizer hubs up front
+
 ## [1.6.1] - 2026-04-04
 
 ### Changed

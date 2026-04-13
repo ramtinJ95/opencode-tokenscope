@@ -13,7 +13,7 @@ import type {
   isTextPart,
 } from "./types"
 import { isToolPart as toolGuard, isReasoningPart as reasoningGuard, isTextPart as textGuard } from "./types"
-import { OPENAI_MODEL_MAP, TRANSFORMERS_MODEL_MAP, PROVIDER_DEFAULTS } from "./config"
+import { OPENAI_MODEL_MAP, HUGGINGFACE_TOKENIZER_MODEL_MAP, PROVIDER_DEFAULTS } from "./config"
 import { TokenizerManager } from "./tokenizer"
 import { summarizeTelemetry } from "./telemetry"
 
@@ -62,8 +62,8 @@ export class ModelResolver {
       const openaiModel = this.resolveOpenAIModel(modelID, providerID)
       if (openaiModel) return openaiModel
 
-      const transformerModel = this.resolveTransformersModel(modelID, providerID)
-      if (transformerModel) return transformerModel
+      const huggingFaceTokenizerModel = this.resolveHuggingFaceTokenizerModel(modelID, providerID)
+      if (huggingFaceTokenizerModel) return huggingFaceTokenizerModel
     }
 
     return { name: "approx", spec: { kind: "approx" } }
@@ -82,33 +82,35 @@ export class ModelResolver {
     return undefined
   }
 
-  private resolveTransformersModel(modelID?: string, providerID?: string): TokenModel | undefined {
-    if (modelID && TRANSFORMERS_MODEL_MAP[modelID]) {
-      return { name: modelID, spec: { kind: "transformers", hub: TRANSFORMERS_MODEL_MAP[modelID] } }
+  private resolveHuggingFaceTokenizerModel(modelID?: string, providerID?: string): TokenModel | undefined {
+    if (modelID && HUGGINGFACE_TOKENIZER_MODEL_MAP[modelID]) {
+      return { name: modelID, spec: { kind: "huggingface", hub: HUGGINGFACE_TOKENIZER_MODEL_MAP[modelID] } }
     }
 
     if (providerID && PROVIDER_DEFAULTS[providerID]) {
       return { name: modelID ?? providerID, spec: PROVIDER_DEFAULTS[providerID] }
     }
 
-    // Prefix-based fallbacks
     if (modelID?.startsWith("claude")) {
-      return { name: modelID, spec: { kind: "transformers", hub: "Xenova/claude-tokenizer" } }
+      return { name: modelID, spec: { kind: "huggingface", hub: "Xenova/claude-tokenizer" } }
     }
 
     if (modelID?.startsWith("llama")) {
       return {
         name: modelID,
-        spec: { kind: "transformers", hub: TRANSFORMERS_MODEL_MAP[modelID] ?? "Xenova/Meta-Llama-3.1-Tokenizer" },
+        spec: {
+          kind: "huggingface",
+          hub: HUGGINGFACE_TOKENIZER_MODEL_MAP[modelID] ?? "Xenova/Meta-Llama-3.1-Tokenizer",
+        },
       }
     }
 
     if (modelID?.startsWith("mistral")) {
-      return { name: modelID, spec: { kind: "transformers", hub: "Xenova/mistral-tokenizer-v3" } }
+      return { name: modelID, spec: { kind: "huggingface", hub: "Xenova/mistral-tokenizer-v3" } }
     }
 
     if (modelID?.startsWith("deepseek")) {
-      return { name: modelID, spec: { kind: "transformers", hub: "deepseek-ai/DeepSeek-V3" } }
+      return { name: modelID, spec: { kind: "huggingface", hub: "deepseek-ai/DeepSeek-V3" } }
     }
 
     return undefined

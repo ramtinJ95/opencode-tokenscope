@@ -3,11 +3,13 @@
 import type { TokenModel } from "./types"
 import { WarningCollector, formatErrorMessage } from "./warnings"
 
+const APPROXIMATE_ONLY_HUGGINGFACE_HUBS = new Set(["google/gemma-2-9b-it"])
+
 export class TokenizerManager {
   private tiktokenCache = new Map<string, any>()
-  private transformerCache = new Map<string, any>()
+  private huggingFaceTokenizerCache = new Map<string, any>()
   private tiktokenModule?: Promise<any>
-  private transformersModule?: Promise<any>
+  private huggingFaceTokenizersModule?: Promise<any>
 
   constructor(private warnings?: WarningCollector) {}
 
@@ -20,8 +22,8 @@ export class TokenizerManager {
           return this.approximateTokenCount(content)
         case "tiktoken":
           return await this.countWithTiktoken(content, model.spec.model)
-        case "transformers":
-          return await this.countWithTransformers(content, model.spec.hub)
+        case "huggingface":
+          return await this.countWithHuggingFaceTokenizer(content, model.spec.hub)
       }
     } catch (error) {
       this.warnings?.add(
@@ -45,15 +47,15 @@ export class TokenizerManager {
     }
   }
 
-  private async countWithTransformers(content: string, hub: string): Promise<number> {
-    const tokenizer = await this.loadTransformersTokenizer(hub)
+  private async countWithHuggingFaceTokenizer(content: string, hub: string): Promise<number> {
+    const tokenizer = await this.loadHuggingFaceTokenizer(hub)
     if (!tokenizer || typeof tokenizer.encode !== "function") {
       return this.approximateTokenCount(content)
     }
 
     try {
       const encoding = await tokenizer.encode(content)
-      return Array.isArray(encoding) ? encoding.length : (encoding?.length ?? this.approximateTokenCount(content))
+      return Array.isArray(encoding?.ids) ? encoding.ids.length : this.approximateTokenCount(content)
     } catch {
       return this.approximateTokenCount(content)
     }
@@ -90,31 +92,71 @@ export class TokenizerManager {
     return this.tiktokenModule
   }
 
-  private async loadTransformersTokenizer(hub: string) {
-    if (this.transformerCache.has(hub)) {
-      return this.transformerCache.get(hub)
+  private async loadHuggingFaceTokenizer(hub: string) {
+    if (this.huggingFaceTokenizerCache.has(hub)) {
+      return this.huggingFaceTokenizerCache.get(hub)
+    }
+
+    if (APPROXIMATE_ONLY_HUGGINGFACE_HUBS.has(hub)) {
+      this.warnings?.add(
+        `TokenScope used approximate token counting for '${hub}' because it only loads public tokenizers directly in analysis mode.`,
+        `huggingface-tokenizer-approx-only:${hub}`
+      )
+      this.huggingFaceTokenizerCache.set(hub, null)
+      return null
     }
 
     try {
-      const { AutoTokenizer } = await this.loadTransformersModule()
-      const tokenizer = await AutoTokenizer.from_pretrained(hub)
-      this.transformerCache.set(hub, tokenizer)
+      const { Tokenizer } = await this.loadHuggingFaceTokenizersModule()
+      const [tokenizerJson, tokenizerConfig] = await Promise.all([
+        this.fetchHuggingFaceJson(hub, "tokenizer.json"),
+        this.fetchHuggingFaceJson(hub, "tokenizer_config.json", true),
+      ])
+      const tokenizer = new Tokenizer(tokenizerJson, tokenizerConfig ?? {})
+      this.huggingFaceTokenizerCache.set(hub, tokenizer)
       return tokenizer
     } catch (error) {
-      this.warnings?.add(
-        `Could not load the tokenizer '${hub}'. Transformer-based counts will use the approximate fallback instead: ${formatErrorMessage(error)}`,
-        `transformer-load:${hub}`
-      )
-      this.transformerCache.set(hub, null)
+      this.warnings?.add(this.buildHuggingFaceFallbackWarning(hub, error), `huggingface-tokenizer-load:${hub}`)
+      this.huggingFaceTokenizerCache.set(hub, null)
       return null
     }
   }
 
-  private async loadTransformersModule() {
-    if (!this.transformersModule) {
-      this.transformersModule = this.importRuntimePackage("@huggingface/transformers")
+  private async loadHuggingFaceTokenizersModule() {
+    if (!this.huggingFaceTokenizersModule) {
+      this.huggingFaceTokenizersModule = this.importRuntimePackage("@huggingface/tokenizers")
     }
-    return this.transformersModule
+    return this.huggingFaceTokenizersModule
+  }
+
+  private async fetchHuggingFaceJson(hub: string, file: string, optional = false) {
+    const response = await fetch(`https://huggingface.co/${hub}/raw/main/${file}`, {
+      headers: this.getHuggingFaceHeaders(),
+    })
+
+    if (!response.ok) {
+      if (optional && response.status === 404) {
+        return null
+      }
+
+      throw new Error(`Failed to fetch ${file} for '${hub}' (HTTP ${response.status})`)
+    }
+
+    return response.json()
+  }
+
+  private getHuggingFaceHeaders() {
+    const token = process.env.HF_TOKEN ?? process.env.HUGGING_FACE_HUB_TOKEN ?? process.env.HUGGINGFACE_TOKEN
+    return token ? { Authorization: `Bearer ${token}` } : undefined
+  }
+
+  private buildHuggingFaceFallbackWarning(hub: string, error: unknown) {
+    const message = formatErrorMessage(error)
+    if (message.includes("Token analyzer dependency '@huggingface/tokenizers' could not be loaded")) {
+      return `TokenScope used approximate token counting for '${hub}' because the lightweight tokenizer runtime was unavailable.`
+    }
+
+    return `TokenScope used approximate token counting for '${hub}' because an exact public tokenizer could not be loaded.`
   }
 
   private async importRuntimePackage(pkg: string) {
