@@ -84,8 +84,8 @@ export const OPENAI_MODEL_MAP: Record<string, string> = {
   "text-embedding-ada-002": "text-embedding-ada-002",
 }
 
-// Transformers model mapping for HuggingFace tokenizers
-export const TRANSFORMERS_MODEL_MAP: Record<string, string> = {
+// Hugging Face tokenizer model mapping
+export const HUGGINGFACE_TOKENIZER_MODEL_MAP: Record<string, string> = {
   "claude-opus-4": "Xenova/claude-tokenizer",
   "claude-sonnet-4": "Xenova/claude-tokenizer",
   "claude-3.7-sonnet": "Xenova/claude-tokenizer",
@@ -116,9 +116,8 @@ export const TRANSFORMERS_MODEL_MAP: Record<string, string> = {
 
 // Provider default tokenizers
 export const PROVIDER_DEFAULTS: Record<string, TokenizerSpec> = {
-  anthropic: { kind: "transformers", hub: "Xenova/claude-tokenizer" },
-  meta: { kind: "transformers", hub: "Xenova/Meta-Llama-3.1-Tokenizer" },
-  mistral: { kind: "transformers", hub: "Xenova/mistral-tokenizer-v3" },
-  deepseek: { kind: "transformers", hub: "deepseek-ai/DeepSeek-V3" },
-  google: { kind: "transformers", hub: "google/gemma-2-9b-it" },
+  anthropic: { kind: "huggingface", hub: "Xenova/claude-tokenizer" },
+  meta: { kind: "huggingface", hub: "Xenova/Meta-Llama-3.1-Tokenizer" },
+  mistral: { kind: "huggingface", hub: "Xenova/mistral-tokenizer-v3" },
+  deepseek: { kind: "huggingface", hub: "deepseek-ai/DeepSeek-V3" },
 }

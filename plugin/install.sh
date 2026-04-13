@@ -142,7 +142,7 @@ echo_info "All files downloaded successfully"
 echo_step "4/5 Installing dependencies..."
 
 DEPS_EXIST=false
-if [ -d "$OPENCODE_DIR/plugin/node_modules/js-tiktoken" ] && [ -d "$OPENCODE_DIR/plugin/node_modules/@huggingface/transformers" ]; then
+if [ -d "$OPENCODE_DIR/plugin/node_modules/js-tiktoken" ] && [ -d "$OPENCODE_DIR/plugin/node_modules/@huggingface/tokenizers" ]; then
     DEPS_EXIST=true
 fi
 
@@ -180,7 +180,7 @@ REQUIRED_FILES=(
     "$OPENCODE_DIR/plugin/models.json"
     "$OPENCODE_DIR/plugin/tokenscope-config.json"
     "$OPENCODE_DIR/plugin/node_modules/js-tiktoken"
-    "$OPENCODE_DIR/plugin/node_modules/@huggingface/transformers"
+    "$OPENCODE_DIR/plugin/node_modules/@huggingface/tokenizers"
     "$OPENCODE_DIR/command/tokenscope.md"
 )
 

@@ -150,7 +150,7 @@ cat token-usage-output.txt
 - **API Call Tracking**: See total API calls for main session and subagents
 - **Top Contributors**: Identify the biggest token consumers
 - **Model Normalization**: Handles `provider/model` format automatically
-- **Multi-Tokenizer Support**: Uses official tokenizers (tiktoken for OpenAI, transformers for others)
+- **Multi-Tokenizer Support**: Uses official tokenizers (tiktoken for OpenAI, lightweight Hugging Face tokenizers for others)
 - **Configurable Sections**: Enable/disable analysis features via `tokenscope-config.json`
 
 ### Skill Analysis
