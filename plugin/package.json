@@ -9,6 +9,7 @@
   "scripts": {
     "clean": "rm -rf dist",
     "build": "npm run clean && tsc",
+    "test": "bun test",
     "prepublishOnly": "npm run build",
     "typecheck": "tsc --noEmit"
   },
