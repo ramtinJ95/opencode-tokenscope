@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Added Bun regression tests covering `sessionID` fallback behavior and bundled asset resolution for TokenScope
+
+### Changed
+
+- Hardened the suggested `/tokenscope` slash-command prompt to keep `sessionID` unset unless the user explicitly asked to analyze a different session
+
+### Fixed
+
+- Normalized blank `sessionID` tool arguments so OpenCode models that emit `sessionID=""` still fall back to the current session instead of failing with "No session ID available for token analysis" (#21)
+- Fixed bundled asset lookup so built/npm TokenScope installs loaded from `dist/` still resolve `models.json` and `tokenscope-config.json` from the published package root instead of silently falling back to default pricing
+
 ## [1.6.2] - 2026-04-13
 
 ### Changed

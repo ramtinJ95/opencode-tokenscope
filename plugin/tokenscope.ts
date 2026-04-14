@@ -60,6 +60,11 @@ function buildFailureReport(sessionID: string | undefined, warnings: string[], f
   return lines.join("\n")
 }
 
+function normalizeSessionID(sessionID?: string): string | undefined {
+  const normalized = sessionID?.trim()
+  return normalized ? normalized : undefined
+}
+
 export const TokenAnalyzerPlugin: Plugin = async ({ client, serverUrl, directory }) => {
   const pricingData = await loadModelPricing()
   const config = await loadTokenscopeConfig()
@@ -75,7 +80,10 @@ export const TokenAnalyzerPlugin: Plugin = async ({ client, serverUrl, directory
           "Analyze token usage across the current session with detailed breakdowns by category (system, user, assistant, tools, reasoning). " +
           "Provides visual charts, identifies top token consumers, and includes costs from subagent (Task tool) child sessions.",
         args: {
-          sessionID: tool.schema.string().optional(),
+          sessionID: tool.schema
+            .string()
+            .optional()
+            .describe("Optional explicit session ID. Leave unset to analyze the current session."),
           limitMessages: tool.schema.number().int().min(1).max(10).optional(),
           includeSubagents: tool.schema
             .boolean()
@@ -93,7 +101,7 @@ export const TokenAnalyzerPlugin: Plugin = async ({ client, serverUrl, directory
           const formatter = new OutputFormatter(costCalculator)
           formatter.setConfig(config)
 
-          const sessionID = args.sessionID ?? context.sessionID
+          const sessionID = normalizeSessionID(args.sessionID) ?? normalizeSessionID(context.sessionID)
           if (!sessionID) {
             const output = buildFailureReport(undefined, warnings.list(), "No session ID available for token analysis")
             const writeError = await writeReport(outputPath, output)

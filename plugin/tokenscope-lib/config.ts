@@ -7,9 +7,29 @@ import { fileURLToPath } from "url"
 import type { TokenizerSpec, ModelPricing, TokenscopeConfig } from "./types"
 
 export const DEFAULT_ENTRY_LIMIT = 3
-const PACKAGE_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..")
-const BUNDLED_TOKENSCOPE_CONFIG_PATH = path.join(PACKAGE_ROOT, "tokenscope-config.json")
+const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url))
 const USER_TOKENSCOPE_CONFIG_PATH = path.join(homedir(), ".config", "opencode", "tokenscope-config.json")
+const BUNDLED_ASSET_PATH_CACHE = new Map<string, string>()
+
+export async function resolveBundledAssetPath(filename: string, moduleDir = MODULE_DIR): Promise<string> {
+  const cacheKey = `${moduleDir}:${filename}`
+  const cached = BUNDLED_ASSET_PATH_CACHE.get(cacheKey)
+  if (cached) return cached
+
+  const candidates = [path.join(moduleDir, "..", filename), path.join(moduleDir, "../..", filename)]
+
+  for (const candidate of candidates) {
+    try {
+      await fs.access(candidate)
+      BUNDLED_ASSET_PATH_CACHE.set(cacheKey, candidate)
+      return candidate
+    } catch {}
+  }
+
+  const fallback = candidates[0]
+  BUNDLED_ASSET_PATH_CACHE.set(cacheKey, fallback)
+  return fallback
+}
 
 // Pricing cache
 let PRICING_CACHE: Record<string, ModelPricing> | null = null
@@ -18,7 +38,7 @@ export async function loadModelPricing(): Promise<Record<string, ModelPricing>> 
   if (PRICING_CACHE) return PRICING_CACHE
 
   try {
-    const modelsPath = path.join(PACKAGE_ROOT, "models.json")
+    const modelsPath = await resolveBundledAssetPath("models.json")
     const data = await fs.readFile(modelsPath, "utf8")
     PRICING_CACHE = JSON.parse(data)
     return PRICING_CACHE!
@@ -53,7 +73,8 @@ export async function loadTokenscopeConfig(): Promise<TokenscopeConfig> {
   if (TOKENSCOPE_CONFIG_CACHE) return TOKENSCOPE_CONFIG_CACHE
 
   const userConfig = await readTokenscopeConfigFile(USER_TOKENSCOPE_CONFIG_PATH)
-  const bundledConfig = userConfig ? null : await readTokenscopeConfigFile(BUNDLED_TOKENSCOPE_CONFIG_PATH)
+  const bundledConfigPath = userConfig ? null : await resolveBundledAssetPath("tokenscope-config.json")
+  const bundledConfig = bundledConfigPath ? await readTokenscopeConfigFile(bundledConfigPath) : null
 
   TOKENSCOPE_CONFIG_CACHE = {
     ...DEFAULT_TOKENSCOPE_CONFIG,

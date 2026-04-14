@@ -33,6 +33,7 @@ description: Analyze token usage across the current session with detailed breakd
 ---
 
 Call the tokenscope tool directly without delegating to other agents.
+Leave sessionID unset unless the user explicitly asked to analyze a different session.
 Then cat the token-usage-output.txt. DONT DO ANYTHING ELSE WITH THE OUTPUT.
 EOF
 ```
@@ -101,7 +102,7 @@ The plugin will:
 
 ### Options
 
-- **sessionID**: Analyze a specific session instead of the current one
+- **sessionID**: Optional explicit session ID. Leave unset to analyze the current session; blank values are ignored
 - **limitMessages**: Limit entries shown per category (1-10, default: 3)
 - **includeSubagents**: Include subagent child session costs (default: true)
 
