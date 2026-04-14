@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Added Bun regression tests covering blank, whitespace-only, and explicit `sessionID` tool argument handling for TokenScope
+
+### Changed
+
+- Hardened the suggested `/tokenscope` slash-command prompt to keep `sessionID` unset unless the user explicitly asked to analyze a different session
+
 ### Fixed
 
 - Normalized blank `sessionID` tool arguments so OpenCode models that emit `sessionID=""` still fall back to the current session instead of failing with "No session ID available for token analysis" (#21)
