@@ -101,7 +101,7 @@ The plugin will:
 
 ### Options
 
-- **sessionID**: Analyze a specific session instead of the current one
+- **sessionID**: Optional explicit session ID. Leave unset to analyze the current session; blank values are ignored
 - **limitMessages**: Limit entries shown per category (1-10, default: 3)
 - **includeSubagents**: Include subagent child session costs (default: true)
 

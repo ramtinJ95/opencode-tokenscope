@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Normalized blank `sessionID` tool arguments so OpenCode models that emit `sessionID=""` still fall back to the current session instead of failing with "No session ID available for token analysis" (#21)
+
 ## [1.6.2] - 2026-04-13
 
 ### Changed
