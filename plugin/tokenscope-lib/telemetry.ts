@@ -3,6 +3,7 @@
 import type { TokenUsage } from "./types"
 
 export interface TelemetryCall {
+  model: string
   inputTokens: number
   outputTokens: number
   reasoningTokens: number
@@ -30,6 +31,17 @@ export interface TelemetrySummary {
   mostRecentCacheWrite: number
   mostRecentCost: number
   mostRecentProviderTotalTokens?: number
+  perModel: Record<
+    string,
+    {
+      inputTokens: number
+      outputTokens: number
+      reasoningTokens: number
+      cacheReadTokens: number
+      cacheWriteTokens: number
+      apiCallCount: number
+    }
+  >
 }
 
 type TelemetryPartLike = {
@@ -43,8 +55,30 @@ type TelemetryMessageLike = {
     role?: string
     tokens?: TokenUsage
     cost?: number
+    model?: {
+      providerID?: string
+      modelID?: string
+    }
+    providerID?: string
+    modelID?: string
   }
   parts: TelemetryPartLike[]
+}
+
+function resolveModelKey(message: TelemetryMessageLike): string {
+  const providerID =
+    (typeof message.info.providerID === "string" && message.info.providerID.trim()) ||
+    (typeof message.info.model?.providerID === "string" && message.info.model.providerID.trim()) ||
+    ""
+  const modelID =
+    (typeof message.info.modelID === "string" && message.info.modelID.trim()) ||
+    (typeof message.info.model?.modelID === "string" && message.info.model.modelID.trim()) ||
+    ""
+
+  if (providerID && modelID) return `${providerID}/${modelID}`
+  if (modelID) return modelID
+  if (providerID) return providerID
+  return "unknown"
 }
 
 function safeNumber(value: unknown): number {
@@ -55,7 +89,7 @@ function hasExplicitNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value)
 }
 
-function buildTelemetryCall(tokens: TokenUsage | undefined, cost: unknown, force: boolean): TelemetryCall | null {
+function buildTelemetryCall(model: string, tokens: TokenUsage | undefined, cost: unknown, force: boolean): TelemetryCall | null {
   const inputTokens = safeNumber(tokens?.input)
   const outputTokens = safeNumber(tokens?.output)
   const reasoningTokens = safeNumber(tokens?.reasoning)
@@ -72,6 +106,7 @@ function buildTelemetryCall(tokens: TokenUsage | undefined, cost: unknown, force
   if (!force && !hasActivity) return null
 
   return {
+    model,
     inputTokens,
     outputTokens,
     reasoningTokens,
@@ -91,17 +126,18 @@ export function collectTelemetryCalls(messages: TelemetryMessageLike[]): Telemet
 
   for (const message of messages) {
     if (message.info.role !== "assistant") continue
+    const model = resolveModelKey(message)
 
     const stepFinishParts = message.parts.filter(isStepFinishPart)
     if (stepFinishParts.length > 0) {
       for (const part of stepFinishParts) {
-        const call = buildTelemetryCall(part.tokens, part.cost, true)
+        const call = buildTelemetryCall(model, part.tokens, part.cost, true)
         if (call) calls.push(call)
       }
       continue
     }
 
-    const fallback = buildTelemetryCall(message.info.tokens, message.info.cost, false)
+    const fallback = buildTelemetryCall(model, message.info.tokens, message.info.cost, false)
     if (fallback) calls.push(fallback)
   }
 
@@ -120,6 +156,7 @@ export function summarizeTelemetry(messages: TelemetryMessageLike[]): TelemetryS
   let callsWithCacheRead = 0
   let callsWithCacheWrite = 0
   let sessionCost = 0
+  const perModel: TelemetrySummary["perModel"] = {}
 
   for (const call of calls) {
     inputTokens += call.inputTokens
@@ -131,6 +168,23 @@ export function summarizeTelemetry(messages: TelemetryMessageLike[]): TelemetryS
 
     if (call.cacheReadTokens > 0) callsWithCacheRead += 1
     if (call.cacheWriteTokens > 0) callsWithCacheWrite += 1
+
+    if (!perModel[call.model]) {
+      perModel[call.model] = {
+        inputTokens: 0,
+        outputTokens: 0,
+        reasoningTokens: 0,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+        apiCallCount: 0,
+      }
+    }
+    perModel[call.model].inputTokens += call.inputTokens
+    perModel[call.model].outputTokens += call.outputTokens
+    perModel[call.model].reasoningTokens += call.reasoningTokens
+    perModel[call.model].cacheReadTokens += call.cacheReadTokens
+    perModel[call.model].cacheWriteTokens += call.cacheWriteTokens
+    perModel[call.model].apiCallCount += 1
   }
 
   const mostRecent = calls[calls.length - 1]
@@ -153,6 +207,7 @@ export function summarizeTelemetry(messages: TelemetryMessageLike[]): TelemetryS
     mostRecentCacheWrite: mostRecent?.cacheWriteTokens ?? 0,
     mostRecentCost: mostRecent?.cost ?? 0,
     mostRecentProviderTotalTokens: mostRecent?.providerTotalTokens,
+    perModel,
   }
 }
 

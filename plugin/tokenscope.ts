@@ -4,6 +4,7 @@ import type { Plugin } from "@opencode-ai/plugin"
 import { tool } from "@opencode-ai/plugin"
 import path from "path"
 import fs from "fs/promises"
+import os from "os"
 
 import type { SessionMessage } from "./tokenscope-lib/types"
 import { DEFAULT_ENTRY_LIMIT, loadModelPricing, loadTokenscopeConfig } from "./tokenscope-lib/config"
@@ -19,8 +20,72 @@ import { WarningCollector, formatErrorMessage } from "./tokenscope-lib/warnings"
 
 const REPORT_FILENAME = "token-usage-output.txt"
 
+type OutputPathOptions = {
+  outputPath?: string
+  envOutputPath?: string
+  sessionID?: string
+  modelName?: string
+  now?: Date
+}
+
+function formatDateParts(now: Date): { date: string; time: string; datetime: string; datetimeCompact: string } {
+  const iso = now.toISOString()
+  const [datePart, timePartRaw] = iso.split("T")
+  const timePart = (timePartRaw ?? "").split(".")[0] ?? "00:00:00"
+  const safeTime = timePart.replace(/:/g, "-")
+  const compactDate = datePart.replace(/-/g, "")
+  const hhmm = safeTime.split("-").slice(0, 2).join("")
+  return {
+    date: datePart,
+    time: safeTime,
+    datetime: `${datePart}_${safeTime}`,
+    datetimeCompact: `${compactDate}_${hhmm}`,
+  }
+}
+
+function sanitizePathToken(value: string): string {
+  const normalized = value.trim().replace(/[^A-Za-z0-9._-]+/g, "-")
+  const collapsed = normalized.replace(/-+/g, "-").replace(/^-|-$/g, "")
+  return collapsed || "unknown"
+}
+
+function expandHomeDirectory(rawPath: string): string {
+  if (rawPath === "~") return os.homedir()
+  if (rawPath.startsWith("~/")) return path.join(os.homedir(), rawPath.slice(2))
+  return rawPath
+}
+
+function resolveOutputPath(options: OutputPathOptions): string {
+  const now = options.now ?? new Date()
+  const { date, time, datetime, datetimeCompact } = formatDateParts(now)
+  const session = sanitizePathToken(options.sessionID ?? "unknown-session")
+  const model = sanitizePathToken(options.modelName ?? "unknown-model")
+
+  const configuredPath = options.outputPath ?? options.envOutputPath
+  const template = (configuredPath ?? REPORT_FILENAME).trim() || REPORT_FILENAME
+  const withPlaceholders = template
+    .replace(/%date%/g, date)
+    .replace(/%time%/g, time)
+    .replace(/%datetime%/g, datetime)
+    .replace(/%datetime_compact%/g, datetimeCompact)
+    .replace(/%session%/g, session)
+    .replace(/%model%/g, model)
+
+  const expanded = expandHomeDirectory(withPlaceholders)
+  const resolved = path.isAbsolute(expanded) ? expanded : path.resolve(process.cwd(), expanded)
+
+  if (!resolved || resolved.includes("\0")) {
+    throw new Error("Invalid outputPath: resolved path is empty or contains invalid characters")
+  }
+
+  return resolved
+}
+
 async function writeReport(outputPath: string, output: string): Promise<string | null> {
   try {
+    const outputDir = path.dirname(outputPath)
+    await fs.mkdir(outputDir, { recursive: true })
+
     try {
       await fs.unlink(outputPath)
     } catch {}
@@ -89,9 +154,14 @@ export const TokenAnalyzerPlugin: Plugin = async ({ client, serverUrl, directory
             .boolean()
             .optional()
             .describe("Include token costs from subagent child sessions (default: true)"),
+          outputPath: tool.schema
+            .string()
+            .optional()
+            .describe(
+              "Optional output path for the report. Supports %date%, %time%, %datetime%, %datetime_compact%, %session%, and %model% placeholders. If omitted, TOKENSCOPE_OUTPUT_FILE is used when set."
+            ),
         },
         async execute(args, context) {
-          const outputPath = path.join(process.cwd(), REPORT_FILENAME)
           const warnings = new WarningCollector()
           const tokenizerManager = new TokenizerManager(warnings)
           const analysisEngine = new TokenAnalysisEngine(tokenizerManager, contentCollector)
@@ -102,7 +172,25 @@ export const TokenAnalyzerPlugin: Plugin = async ({ client, serverUrl, directory
           formatter.setConfig(config)
 
           const sessionID = normalizeSessionID(args.sessionID) ?? normalizeSessionID(context.sessionID)
+          const resolveReportPath = (modelName?: string) =>
+            resolveOutputPath({
+              outputPath: args.outputPath,
+              envOutputPath: process.env.TOKENSCOPE_OUTPUT_FILE,
+              sessionID,
+              modelName,
+            })
+          const resolveReportPathSafe = (modelName?: string): { path?: string; error?: string } => {
+            try {
+              return { path: resolveReportPath(modelName) }
+            } catch (error) {
+              return { error: `Invalid outputPath: ${formatErrorMessage(error)}` }
+            }
+          }
+
           if (!sessionID) {
+            const pathResult = resolveReportPathSafe()
+            if (!pathResult.path) return pathResult.error ?? "Invalid outputPath"
+            const outputPath = pathResult.path
             const output = buildFailureReport(undefined, warnings.list(), "No session ID available for token analysis")
             const writeError = await writeReport(outputPath, output)
             if (writeError) {
@@ -116,6 +204,9 @@ export const TokenAnalyzerPlugin: Plugin = async ({ client, serverUrl, directory
             const messages: SessionMessage[] = unwrapResponseData<SessionMessage[]>(response ?? [])
 
             if (!Array.isArray(messages) || messages.length === 0) {
+              const pathResult = resolveReportPathSafe()
+              if (!pathResult.path) return pathResult.error ?? "Invalid outputPath"
+              const outputPath = pathResult.path
               const output = buildFailureReport(sessionID, warnings.list(), `Session ${sessionID} has no messages yet.`)
               const writeError = await writeReport(outputPath, output)
               if (writeError) {
@@ -126,6 +217,9 @@ export const TokenAnalyzerPlugin: Plugin = async ({ client, serverUrl, directory
 
             const { model: tokenModel, providerID, modelID } = modelResolver.resolveModelAndProvider(messages)
             const pricingModelName = costCalculator.buildLookupKey(providerID, modelID) || tokenModel.name
+            const pathResult = resolveReportPathSafe(modelID || tokenModel.name)
+            if (!pathResult.path) return pathResult.error ?? "Invalid outputPath"
+            const outputPath = pathResult.path
 
             if (tokenModel.spec.kind === "approx") {
               warnings.add(
@@ -157,7 +251,7 @@ export const TokenAnalyzerPlugin: Plugin = async ({ client, serverUrl, directory
 
             // Context analysis (context breakdown, tool estimates, cache efficiency)
             const pricing = costCalculator.getPricing(pricingModelName)
-            const contextResult = await contextAnalyzer.analyze(sessionID, tokenModel, pricing, config)
+            const contextResult = await contextAnalyzer.analyze(sessionID, tokenModel, pricing, config, messages)
 
             // Merge context analysis results into main analysis
             if (contextResult.contextBreakdown) {
@@ -217,6 +311,9 @@ export const TokenAnalyzerPlugin: Plugin = async ({ client, serverUrl, directory
 
             return summaryMsg
           } catch (error) {
+            const pathResult = resolveReportPathSafe()
+            if (!pathResult.path) return pathResult.error ?? "Invalid outputPath"
+            const outputPath = pathResult.path
             const fatalMessage = formatErrorMessage(error)
             warnings.add(
               `TokenScope returned a fallback report instead of aborting the session: ${fatalMessage}`,
