@@ -12,10 +12,76 @@ import type {
   ModelPricing,
   TokenModel,
   ContextAnalysisResult,
+  SessionMessage,
 } from "./types"
 import { TokenizerManager } from "./tokenizer"
 import { firstCacheWriteTokens, summarizeTelemetry } from "./telemetry"
 import { WarningCollector, formatErrorMessage } from "./warnings"
+
+function stripAnsi(input: string): string {
+  return input.replace(/\u001B\[[0-9;]*[A-Za-z]/g, "")
+}
+
+function extractFirstTopLevelJsonObject(input: string): string | null {
+  const start = input.indexOf("{")
+  if (start < 0) return null
+
+  let depth = 0
+  let inString = false
+  let escaping = false
+
+  for (let i = start; i < input.length; i += 1) {
+    const char = input[i]
+    if (inString) {
+      if (escaping) {
+        escaping = false
+        continue
+      }
+      if (char === "\\") {
+        escaping = true
+        continue
+      }
+      if (char === '"') {
+        inString = false
+      }
+      continue
+    }
+
+    if (char === '"') {
+      inString = true
+      continue
+    }
+    if (char === "{") {
+      depth += 1
+      continue
+    }
+    if (char === "}") {
+      depth -= 1
+      if (depth === 0) {
+        return input.slice(start, i + 1)
+      }
+    }
+  }
+
+  return null
+}
+
+export function parseOpencodeExportOutput(rawOutput: string): ExportedSession {
+  const normalized = stripAnsi(rawOutput).trim()
+  if (!normalized) {
+    throw new Error("OpenCode export returned empty output")
+  }
+
+  try {
+    return JSON.parse(normalized) as ExportedSession
+  } catch {
+    const candidate = extractFirstTopLevelJsonObject(normalized)
+    if (!candidate) {
+      throw new Error("OpenCode export did not contain a complete JSON object")
+    }
+    return JSON.parse(candidate) as ExportedSession
+  }
+}
 
 export class ContextAnalyzer {
   private tokenizerManager: TokenizerManager
@@ -34,12 +100,13 @@ export class ContextAnalyzer {
     sessionID: string,
     tokenModel: TokenModel,
     pricing: ModelPricing,
-    config: TokenscopeConfig
+    config: TokenscopeConfig,
+    fallbackMessages: SessionMessage[] = []
   ): Promise<ContextAnalysisResult> {
     const result: ContextAnalysisResult = {}
 
     try {
-      const exported = await this.runExport(sessionID)
+      const exported = (await this.runExport(sessionID)) ?? this.buildExportFromMessages(sessionID, fallbackMessages)
       if (!exported) return result
 
       if (config.enableContextBreakdown) {
@@ -64,6 +131,21 @@ export class ContextAnalyzer {
   }
 
   /**
+   * Build a minimal export-like payload from session messages when `opencode export`
+   * fails (for example due to malformed JSON output).
+   */
+  private buildExportFromMessages(sessionID: string, messages: SessionMessage[]): ExportedSession | null {
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return null
+    }
+
+    return {
+      info: { id: sessionID, title: sessionID },
+      messages: messages as unknown as ExportedMessage[],
+    }
+  }
+
+  /**
    * Execute opencode export and parse the JSON output
    */
   private async runExport(sessionID: string): Promise<ExportedSession | null> {
@@ -79,7 +161,7 @@ export class ContextAnalyzer {
         return null
       }
 
-      return JSON.parse(result) as ExportedSession
+      return parseOpencodeExportOutput(result)
     } catch (error) {
       this.warnings?.add(
         `OpenCode export failed for session ${sessionID}. Context sections were skipped: ${formatErrorMessage(error)}`,
