@@ -10,6 +10,7 @@ const REPORT_FILENAME = "token-usage-output.txt"
 type RunOptions = {
   argSessionID?: string
   contextSessionID?: string
+  outputPath?: string
 }
 
 async function withTempCwd<T>(run: (directory: string) => Promise<T>): Promise<T> {
@@ -42,11 +43,12 @@ async function runTokenscope(options: RunOptions = {}) {
     })
 
     const summary = await plugin.tool.tokenscope.execute(
-      {
-        sessionID: options.argSessionID,
-        limitMessages: 10,
-        includeSubagents: true,
-      },
+        {
+          sessionID: options.argSessionID,
+          limitMessages: 10,
+          includeSubagents: true,
+          outputPath: options.outputPath,
+        },
       {
         sessionID: options.contextSessionID ?? "ses_current",
         messageID: "msg_test",
@@ -63,6 +65,69 @@ async function runTokenscope(options: RunOptions = {}) {
     return { calls, summary, report }
   })
 }
+
+test.serial("writes report to a custom absolute outputPath", async () => {
+  await withTempCwd(async (directory) => {
+    const customPath = path.join(directory, "reports", "tokens.txt")
+    const { summary } = await runTokenscope({ outputPath: customPath })
+    const report = await fs.readFile(customPath, "utf8")
+
+    expect(summary).toContain(customPath)
+    expect(report).toContain("Token Analysis: Session ses_current")
+  })
+})
+
+test.serial("replaces placeholders in outputPath", async () => {
+  await withTempCwd(async (directory) => {
+    const template = path.join(directory, "reports", "%date%", "%session%-%model%.txt")
+    const { summary } = await runTokenscope({ outputPath: template })
+
+    const today = new Date().toISOString().split("T")[0]
+    const expectedPath = path.join(directory, "reports", today, "ses_current-unknown-model.txt")
+    const report = await fs.readFile(expectedPath, "utf8")
+
+    expect(summary).toContain(expectedPath)
+    expect(report).toContain("Token Analysis: Session ses_current")
+  })
+})
+
+test.serial("uses TOKENSCOPE_OUTPUT_FILE when outputPath arg is not provided", async () => {
+  await withTempCwd(async (directory) => {
+    const previous = process.env.TOKENSCOPE_OUTPUT_FILE
+    process.env.TOKENSCOPE_OUTPUT_FILE = path.join(directory, "env-reports", "%session%-%date%.txt")
+
+    try {
+      const { summary } = await runTokenscope({ contextSessionID: "ses_env" })
+      const today = new Date().toISOString().split("T")[0]
+      const expectedPath = path.join(directory, "env-reports", `ses_env-${today}.txt`)
+      const report = await fs.readFile(expectedPath, "utf8")
+
+      expect(summary).toContain(expectedPath)
+      expect(report).toContain("Token Analysis: Session ses_env")
+    } finally {
+      if (previous === undefined) {
+        delete process.env.TOKENSCOPE_OUTPUT_FILE
+      } else {
+        process.env.TOKENSCOPE_OUTPUT_FILE = previous
+      }
+    }
+  })
+})
+
+test.serial("replaces %datetime_compact% placeholder", async () => {
+  await withTempCwd(async (directory) => {
+    const template = path.join(directory, "reports", "run-%datetime_compact%.txt")
+    const { summary } = await runTokenscope({ outputPath: template, contextSessionID: "ses_compact" })
+
+    const match = summary.match(/saved to:\s*(.+)$/m)
+    expect(match).toBeTruthy()
+    const resolvedPath = (match?.[1] ?? "").trim()
+    expect(path.basename(resolvedPath)).toMatch(/^run-\d{8}_\d{4}\.txt$/)
+
+    const report = await fs.readFile(resolvedPath, "utf8")
+    expect(report).toContain("Token Analysis: Session ses_compact")
+  })
+})
 
 test.serial("falls back to the current session when sessionID is an empty string", async () => {
   const { calls, summary, report } = await runTokenscope({ argSessionID: "" })
