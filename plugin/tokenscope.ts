@@ -157,7 +157,7 @@ export const TokenAnalyzerPlugin: Plugin = async ({ client, serverUrl, directory
 
             // Context analysis (context breakdown, tool estimates, cache efficiency)
             const pricing = costCalculator.getPricing(pricingModelName)
-            const contextResult = await contextAnalyzer.analyze(sessionID, tokenModel, pricing, config)
+            const contextResult = await contextAnalyzer.analyze(sessionID, tokenModel, pricing, config, messages)
 
             // Merge context analysis results into main analysis
             if (contextResult.contextBreakdown) {

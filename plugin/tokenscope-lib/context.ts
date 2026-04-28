@@ -12,6 +12,7 @@ import type {
   ModelPricing,
   TokenModel,
   ContextAnalysisResult,
+  SessionMessage,
 } from "./types"
 import { TokenizerManager } from "./tokenizer"
 import { firstCacheWriteTokens, summarizeTelemetry } from "./telemetry"
@@ -34,12 +35,13 @@ export class ContextAnalyzer {
     sessionID: string,
     tokenModel: TokenModel,
     pricing: ModelPricing,
-    config: TokenscopeConfig
+    config: TokenscopeConfig,
+    fallbackMessages: SessionMessage[] = []
   ): Promise<ContextAnalysisResult> {
     const result: ContextAnalysisResult = {}
 
     try {
-      const exported = await this.runExport(sessionID)
+      const exported = (await this.runExport(sessionID)) ?? this.buildExportFromMessages(sessionID, fallbackMessages)
       if (!exported) return result
 
       if (config.enableContextBreakdown) {
@@ -61,6 +63,21 @@ export class ContextAnalyzer {
     }
 
     return result
+  }
+
+  /**
+   * Build a minimal export-like payload from session messages when `opencode export`
+   * fails (for example due to malformed JSON output).
+   */
+  private buildExportFromMessages(sessionID: string, messages: SessionMessage[]): ExportedSession | null {
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return null
+    }
+
+    return {
+      info: { id: sessionID, title: sessionID },
+      messages: messages as unknown as ExportedMessage[],
+    }
   }
 
   /**
