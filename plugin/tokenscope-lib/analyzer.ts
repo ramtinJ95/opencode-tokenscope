@@ -340,6 +340,7 @@ export class TokenAnalysisEngine {
       mostRecentCacheRead: 0,
       mostRecentCacheWrite: 0,
       mostRecentProviderTotalTokens: undefined,
+      perModel: {},
       sessionCost: 0,
       mostRecentCost: 0,
       allToolsCalled,
@@ -388,6 +389,7 @@ export class TokenAnalysisEngine {
     analysis.callsWithCacheWrite = telemetry.callsWithCacheWrite
     analysis.sessionCost = telemetry.sessionCost
     analysis.mostRecentCost = telemetry.mostRecentCost
+    analysis.perModel = telemetry.perModel
     analysis.mostRecentInput = telemetry.mostRecentInput
     analysis.mostRecentOutput = telemetry.mostRecentOutput
     analysis.mostRecentReasoning = telemetry.mostRecentReasoning

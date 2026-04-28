@@ -1,6 +1,6 @@
 // CostCalculator - calculates costs from token analysis
 
-import type { TokenAnalysis, CostEstimate, ModelPricing } from "./types"
+import type { TokenAnalysis, CostEstimate, ModelPricing, PerModelCostEstimate } from "./types"
 
 export class CostCalculator {
   constructor(private pricingData: Record<string, ModelPricing>) {}
@@ -23,11 +23,42 @@ export class CostCalculator {
     const estimatedSessionCost =
       estimatedInputCost + estimatedOutputCost + estimatedCacheReadCost + estimatedCacheWriteCost
 
+    const estimatedSessionCostPerModel: Record<string, PerModelCostEstimate> = {}
+    for (const [modelName, modelUsage] of Object.entries(analysis.perModel ?? {})) {
+      const modelPricing = this.getPricing(modelName)
+      const modelEstimatedInputCost = (modelUsage.inputTokens / 1_000_000) * modelPricing.input
+      const modelEstimatedOutputCost =
+        ((modelUsage.outputTokens + modelUsage.reasoningTokens) / 1_000_000) * modelPricing.output
+      const modelEstimatedCacheReadCost = (modelUsage.cacheReadTokens / 1_000_000) * modelPricing.cacheRead
+      const modelEstimatedCacheWriteCost = (modelUsage.cacheWriteTokens / 1_000_000) * modelPricing.cacheWrite
+      const modelEstimatedSessionCost =
+        modelEstimatedInputCost + modelEstimatedOutputCost + modelEstimatedCacheReadCost + modelEstimatedCacheWriteCost
+
+      estimatedSessionCostPerModel[modelName] = {
+        estimatedSessionCost: modelEstimatedSessionCost,
+        estimatedInputCost: modelEstimatedInputCost,
+        estimatedOutputCost: modelEstimatedOutputCost,
+        estimatedCacheReadCost: modelEstimatedCacheReadCost,
+        estimatedCacheWriteCost: modelEstimatedCacheWriteCost,
+        pricePerMillionInput: modelPricing.input,
+        pricePerMillionOutput: modelPricing.output,
+        pricePerMillionCacheRead: modelPricing.cacheRead,
+        pricePerMillionCacheWrite: modelPricing.cacheWrite,
+        inputTokens: modelUsage.inputTokens,
+        outputTokens: modelUsage.outputTokens,
+        reasoningTokens: modelUsage.reasoningTokens,
+        cacheReadTokens: modelUsage.cacheReadTokens,
+        cacheWriteTokens: modelUsage.cacheWriteTokens,
+        apiCallCount: modelUsage.apiCallCount,
+      }
+    }
+
     return {
       isSubscription,
       apiSessionCost: analysis.sessionCost,
       apiMostRecentCost: analysis.mostRecentCost,
       estimatedSessionCost,
+      estimatedSessionCostPerModel,
       estimatedInputCost,
       estimatedOutputCost,
       estimatedCacheReadCost,

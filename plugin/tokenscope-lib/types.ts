@@ -89,6 +89,7 @@ export interface TokenAnalysis {
   mostRecentCacheRead: number
   mostRecentCacheWrite: number
   mostRecentProviderTotalTokens?: number
+  perModel?: Record<string, PerModelTelemetrySummary>
   sessionCost: number
   mostRecentCost: number
   allToolsCalled: string[]
@@ -122,6 +123,7 @@ export interface CostEstimate {
   apiSessionCost: number
   apiMostRecentCost: number
   estimatedSessionCost: number
+  estimatedSessionCostPerModel: Record<string, PerModelCostEstimate>
   estimatedInputCost: number
   estimatedOutputCost: number
   estimatedCacheReadCost: number
@@ -135,6 +137,33 @@ export interface CostEstimate {
   reasoningTokens: number
   cacheReadTokens: number
   cacheWriteTokens: number
+}
+
+export interface PerModelTelemetrySummary {
+  inputTokens: number
+  outputTokens: number
+  reasoningTokens: number
+  cacheReadTokens: number
+  cacheWriteTokens: number
+  apiCallCount: number
+}
+
+export interface PerModelCostEstimate {
+  estimatedSessionCost: number
+  estimatedInputCost: number
+  estimatedOutputCost: number
+  estimatedCacheReadCost: number
+  estimatedCacheWriteCost: number
+  pricePerMillionInput: number
+  pricePerMillionOutput: number
+  pricePerMillionCacheRead: number
+  pricePerMillionCacheWrite: number
+  inputTokens: number
+  outputTokens: number
+  reasoningTokens: number
+  cacheReadTokens: number
+  cacheWriteTokens: number
+  apiCallCount: number
 }
 
 export interface SubagentSummary {
