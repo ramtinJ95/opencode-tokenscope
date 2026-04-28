@@ -298,21 +298,51 @@ export class OutputFormatter {
       lines.push(`You appear to be on a subscription plan (API cost is $0).`)
       lines.push(`Here's what this session would cost with direct API access:`)
       lines.push(``)
-      lines.push(
-        `  Input tokens:      ${this.formatNumber(inputTokens).padStart(10)} \u00d7 $${cost.pricePerMillionInput.toFixed(2)}/M  = $${cost.estimatedInputCost.toFixed(4)}`
+      const perModelEntries = Object.entries(cost.estimatedSessionCostPerModel).sort((a, b) =>
+        b[1].estimatedSessionCost - a[1].estimatedSessionCost
       )
-      lines.push(
-        `  Output tokens:     ${this.formatNumber(outputTokens + reasoningTokens).padStart(10)} \u00d7 $${cost.pricePerMillionOutput.toFixed(2)}/M  = $${cost.estimatedOutputCost.toFixed(4)}`
-      )
-      if (cacheReadTokens > 0 && cost.pricePerMillionCacheRead > 0) {
+
+      if (perModelEntries.length > 0) {
+        for (const [model, modelCost] of perModelEntries) {
+          lines.push(
+            `  Model: ${model} (${this.formatNumber(modelCost.apiCallCount)} call${modelCost.apiCallCount === 1 ? "" : "s"})`
+          )
+          lines.push(
+            `    Input tokens:    ${this.formatNumber(modelCost.inputTokens).padStart(10)} \u00d7 $${modelCost.pricePerMillionInput.toFixed(2)}/M  = $${modelCost.estimatedInputCost.toFixed(4)}`
+          )
+          lines.push(
+            `    Output tokens:   ${this.formatNumber(modelCost.outputTokens + modelCost.reasoningTokens).padStart(10)} \u00d7 $${modelCost.pricePerMillionOutput.toFixed(2)}/M  = $${modelCost.estimatedOutputCost.toFixed(4)}`
+          )
+          if (modelCost.cacheReadTokens > 0 && modelCost.pricePerMillionCacheRead > 0) {
+            lines.push(
+              `    Cache read:      ${this.formatNumber(modelCost.cacheReadTokens).padStart(10)} \u00d7 $${modelCost.pricePerMillionCacheRead.toFixed(2)}/M  = $${modelCost.estimatedCacheReadCost.toFixed(4)}`
+            )
+          }
+          if (modelCost.cacheWriteTokens > 0 && modelCost.pricePerMillionCacheWrite > 0) {
+            lines.push(
+              `    Cache write:     ${this.formatNumber(modelCost.cacheWriteTokens).padStart(10)} \u00d7 $${modelCost.pricePerMillionCacheWrite.toFixed(2)}/M  = $${modelCost.estimatedCacheWriteCost.toFixed(4)}`
+            )
+          }
+          lines.push(`    Subtotal:        $${modelCost.estimatedSessionCost.toFixed(4)}`)
+          lines.push(``)
+        }
+      } else {
         lines.push(
-          `  Cache read:        ${this.formatNumber(cacheReadTokens).padStart(10)} \u00d7 $${cost.pricePerMillionCacheRead.toFixed(2)}/M  = $${cost.estimatedCacheReadCost.toFixed(4)}`
+          `  Input tokens:      ${this.formatNumber(inputTokens).padStart(10)} \u00d7 $${cost.pricePerMillionInput.toFixed(2)}/M  = $${cost.estimatedInputCost.toFixed(4)}`
         )
-      }
-      if (cacheWriteTokens > 0 && cost.pricePerMillionCacheWrite > 0) {
         lines.push(
-          `  Cache write:       ${this.formatNumber(cacheWriteTokens).padStart(10)} \u00d7 $${cost.pricePerMillionCacheWrite.toFixed(2)}/M  = $${cost.estimatedCacheWriteCost.toFixed(4)}`
+          `  Output tokens:     ${this.formatNumber(outputTokens + reasoningTokens).padStart(10)} \u00d7 $${cost.pricePerMillionOutput.toFixed(2)}/M  = $${cost.estimatedOutputCost.toFixed(4)}`
         )
+        if (cacheReadTokens > 0 && cost.pricePerMillionCacheRead > 0) {
+          lines.push(
+            `  Cache read:        ${this.formatNumber(cacheReadTokens).padStart(10)} \u00d7 $${cost.pricePerMillionCacheRead.toFixed(2)}/M  = $${cost.estimatedCacheReadCost.toFixed(4)}`
+          )
+        }
+        if (cacheWriteTokens > 0 && cost.pricePerMillionCacheWrite > 0) {
+          lines.push(
+            `  Cache write:       ${this.formatNumber(cacheWriteTokens).padStart(10)} \u00d7 $${cost.pricePerMillionCacheWrite.toFixed(2)}/M  = $${cost.estimatedCacheWriteCost.toFixed(4)}`
+          )
+        }
       }
       lines.push(`\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
       lines.push(`ESTIMATED TOTAL: $${cost.estimatedSessionCost.toFixed(4)}`)
