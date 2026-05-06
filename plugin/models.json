@@ -6953,6 +6953,18 @@
     "cacheWrite": 0,
     "cacheRead": 0.028
   },
+  "deepseek/deepseek-v4-flash": {
+    "input": 0.14,
+    "output": 0.28,
+    "cacheWrite": 0,
+    "cacheRead": 0.0028
+  },
+  "deepseek/deepseek-v4-pro": {
+    "input": 0.435,
+    "output": 0.87,
+    "cacheWrite": 0,
+    "cacheRead": 0.003625
+  },
   "devstral-2-123b-instruct-2512-tee": {
     "input": 0.05,
     "output": 0.22,
