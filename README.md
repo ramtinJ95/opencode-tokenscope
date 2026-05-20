@@ -63,7 +63,7 @@ Then restart OpenCode and run `/tokenscope`
 |---------------------------|----------|
 | `"@ramtinj95/opencode-tokenscope"` | Uses the version installed at install time. **Never auto-updates.** |
 | `"@ramtinj95/opencode-tokenscope@latest"` | Fetches latest version **every time OpenCode starts**. |
-| `"@ramtinj95/opencode-tokenscope@1.6.3"` | Pins to exact version 1.6.3. Never updates. |
+| `"@ramtinj95/opencode-tokenscope@1.6.4"` | Pins to exact version 1.6.4. Never updates. |
 
 To manually update:
 ```bash
