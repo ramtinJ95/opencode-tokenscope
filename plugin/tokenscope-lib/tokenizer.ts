@@ -1,7 +1,7 @@
 // TokenizerManager - handles token counting with multiple backends
 
-import type { TokenModel } from "./types"
-import { WarningCollector, formatErrorMessage } from "./warnings"
+import type { TokenModel } from "./types.js"
+import { WarningCollector, formatErrorMessage } from "./warnings.js"
 
 const APPROXIMATE_ONLY_HUGGINGFACE_HUBS = new Set(["google/gemma-2-9b-it"])
 

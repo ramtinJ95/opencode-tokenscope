@@ -10,8 +10,8 @@ import type {
   CacheEfficiency,
   TokenscopeConfig,
   SkillAnalysis,
-} from "./types"
-import { CostCalculator } from "./cost"
+} from "./types.js"
+import { CostCalculator } from "./cost.js"
 
 export class OutputFormatter {
   private readonly BAR_WIDTH = 30

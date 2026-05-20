@@ -4,7 +4,7 @@ import path from "path"
 import fs from "fs/promises"
 import { homedir } from "os"
 import { fileURLToPath } from "url"
-import type { TokenizerSpec, ModelPricing, TokenscopeConfig } from "./types"
+import type { TokenizerSpec, ModelPricing, TokenscopeConfig } from "./types.js"
 
 export const DEFAULT_ENTRY_LIMIT = 3
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url))

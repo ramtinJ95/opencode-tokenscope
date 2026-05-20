@@ -1,10 +1,10 @@
 // SubagentAnalyzer - analyzes child sessions from Task tool calls
 
-import type { SessionMessage, SubagentSummary, SubagentAnalysis, ChildSession } from "./types"
-import { CostCalculator } from "./cost"
-import { fetchSessionChildren, fetchSessionMessages, unwrapResponseData } from "./opencode"
-import { summarizeTelemetry } from "./telemetry"
-import { WarningCollector, formatErrorMessage } from "./warnings"
+import type { SessionMessage, SubagentSummary, SubagentAnalysis, ChildSession } from "./types.js"
+import { CostCalculator } from "./cost.js"
+import { fetchSessionChildren, fetchSessionMessages, unwrapResponseData } from "./opencode.js"
+import { summarizeTelemetry } from "./telemetry.js"
+import { WarningCollector, formatErrorMessage } from "./warnings.js"
 
 export class SubagentAnalyzer {
   constructor(

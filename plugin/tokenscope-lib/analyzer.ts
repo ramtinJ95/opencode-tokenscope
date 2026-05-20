@@ -11,11 +11,11 @@ import type {
   isToolPart,
   isReasoningPart,
   isTextPart,
-} from "./types"
-import { isToolPart as toolGuard, isReasoningPart as reasoningGuard, isTextPart as textGuard } from "./types"
-import { OPENAI_MODEL_MAP, HUGGINGFACE_TOKENIZER_MODEL_MAP, PROVIDER_DEFAULTS } from "./config"
-import { TokenizerManager } from "./tokenizer"
-import { summarizeTelemetry } from "./telemetry"
+} from "./types.js"
+import { isToolPart as toolGuard, isReasoningPart as reasoningGuard, isTextPart as textGuard } from "./types.js"
+import { OPENAI_MODEL_MAP, HUGGINGFACE_TOKENIZER_MODEL_MAP, PROVIDER_DEFAULTS } from "./config.js"
+import { TokenizerManager } from "./tokenizer.js"
+import { summarizeTelemetry } from "./telemetry.js"
 
 // Model Resolution
 

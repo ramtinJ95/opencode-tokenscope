@@ -10,10 +10,10 @@ import type {
   LoadedSkill,
   TokenModel,
   TokenscopeConfig,
-} from "./types"
-import { isToolPart } from "./types"
-import { TokenizerManager } from "./tokenizer"
-import { WarningCollector, formatErrorMessage } from "./warnings"
+} from "./types.js"
+import { isToolPart } from "./types.js"
+import { TokenizerManager } from "./tokenizer.js"
+import { WarningCollector, formatErrorMessage } from "./warnings.js"
 
 interface ToolListItem {
   id: string
