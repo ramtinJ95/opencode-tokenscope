@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.4] - 2026-05-20
+
+### Added
+
+- Added DeepSeek V4 Flash and DeepSeek V4 Pro pricing entries
+- Added a compiled `dist/` ESM smoke test to catch strict loader regressions
+
+### Fixed
+
+- Added explicit `.js` extensions to compiled ESM imports so TokenScope loads in strict ESM environments such as OpenCode Desktop (#30)
+
 ## [1.6.3] - 2026-04-14
 
 ### Added
@@ -93,7 +104,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Synced READMEs and removed version tags from feature headers
 - Updated install script for better testing before npm push
 
-[Unreleased]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.6.3...HEAD
+[Unreleased]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.6.4...HEAD
+[1.6.4]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.6.3...v1.6.4
 [1.6.3]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.6.2...v1.6.3
 [1.6.2]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.6.1...v1.6.2
 [1.6.1]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.6.0...v1.6.1
