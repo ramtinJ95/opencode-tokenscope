@@ -1,6 +1,6 @@
 // CostCalculator - calculates costs from token analysis
 
-import type { TokenAnalysis, CostEstimate, ModelPricing } from "./types"
+import type { TokenAnalysis, CostEstimate, ModelPricing } from "./types.js"
 
 export class CostCalculator {
   constructor(private pricingData: Record<string, ModelPricing>) {}

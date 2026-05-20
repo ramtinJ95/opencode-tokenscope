@@ -1,21 +1,21 @@
 // OpenCode Token Analyzer Plugin - Main Entry Point
 
 import type { Plugin } from "@opencode-ai/plugin"
-import { tool } from "@opencode-ai/plugin"
+import { tool } from "@opencode-ai/plugin/tool"
 import path from "path"
 import fs from "fs/promises"
 
-import type { SessionMessage } from "./tokenscope-lib/types"
-import { DEFAULT_ENTRY_LIMIT, loadModelPricing, loadTokenscopeConfig } from "./tokenscope-lib/config"
-import { TokenizerManager } from "./tokenscope-lib/tokenizer"
-import { ModelResolver, ContentCollector, TokenAnalysisEngine } from "./tokenscope-lib/analyzer"
-import { CostCalculator } from "./tokenscope-lib/cost"
-import { SubagentAnalyzer } from "./tokenscope-lib/subagent"
-import { OutputFormatter } from "./tokenscope-lib/formatter"
-import { ContextAnalyzer } from "./tokenscope-lib/context"
-import { SkillAnalyzer } from "./tokenscope-lib/skill"
-import { fetchSessionMessages, unwrapResponseData } from "./tokenscope-lib/opencode"
-import { WarningCollector, formatErrorMessage } from "./tokenscope-lib/warnings"
+import type { SessionMessage } from "./tokenscope-lib/types.js"
+import { DEFAULT_ENTRY_LIMIT, loadModelPricing, loadTokenscopeConfig } from "./tokenscope-lib/config.js"
+import { TokenizerManager } from "./tokenscope-lib/tokenizer.js"
+import { ModelResolver, ContentCollector, TokenAnalysisEngine } from "./tokenscope-lib/analyzer.js"
+import { CostCalculator } from "./tokenscope-lib/cost.js"
+import { SubagentAnalyzer } from "./tokenscope-lib/subagent.js"
+import { OutputFormatter } from "./tokenscope-lib/formatter.js"
+import { ContextAnalyzer } from "./tokenscope-lib/context.js"
+import { SkillAnalyzer } from "./tokenscope-lib/skill.js"
+import { fetchSessionMessages, unwrapResponseData } from "./tokenscope-lib/opencode.js"
+import { WarningCollector, formatErrorMessage } from "./tokenscope-lib/warnings.js"
 
 const REPORT_FILENAME = "token-usage-output.txt"
 

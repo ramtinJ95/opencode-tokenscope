@@ -12,10 +12,10 @@ import type {
   ModelPricing,
   TokenModel,
   ContextAnalysisResult,
-} from "./types"
-import { TokenizerManager } from "./tokenizer"
-import { firstCacheWriteTokens, summarizeTelemetry } from "./telemetry"
-import { WarningCollector, formatErrorMessage } from "./warnings"
+} from "./types.js"
+import { TokenizerManager } from "./tokenizer.js"
+import { firstCacheWriteTokens, summarizeTelemetry } from "./telemetry.js"
+import { WarningCollector, formatErrorMessage } from "./warnings.js"
 
 export class ContextAnalyzer {
   private tokenizerManager: TokenizerManager

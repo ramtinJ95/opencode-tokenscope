@@ -1,6 +1,6 @@
 // Telemetry helpers - extracts per-API-call token and cost data from stored session messages
 
-import type { TokenUsage } from "./types"
+import type { TokenUsage } from "./types.js"
 
 export interface TelemetryCall {
   inputTokens: number

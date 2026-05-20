@@ -9,7 +9,8 @@
   "scripts": {
     "clean": "rm -rf dist",
     "build": "npm run clean && tsc",
-    "test": "bun test",
+    "test": "bun test && npm run test:dist",
+    "test:dist": "npm run build && node -e \"await import('./dist/tokenscope.js')\"",
     "prepublishOnly": "npm run build",
     "typecheck": "tsc --noEmit"
   },
