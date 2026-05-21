@@ -29,12 +29,32 @@ Track and optimize your token usage across system prompts, user messages, tool o
 mkdir -p ~/.config/opencode/command
 cat > ~/.config/opencode/command/tokenscope.md << 'EOF'
 ---
-description: Analyze token usage across the current session with detailed breakdowns by category
+description: Analyze token usage. Usage: /tokenscope [sessionID] [limitMessages=3] [includeSubagents=true]
 ---
 
 Call the tokenscope tool directly without delegating to other agents.
-Leave sessionID unset unless the user explicitly asked to analyze a different session.
-Then cat the token-usage-output.txt. DONT DO ANYTHING ELSE WITH THE OUTPUT.
+
+Usage:
+- `/tokenscope` -> current session, limitMessages=3, includeSubagents=true
+- `/tokenscope <sessionID>` -> specific session, limitMessages=3, includeSubagents=true
+- `/tokenscope <sessionID> <limitMessages>` -> limitMessages must be 1-10
+- `/tokenscope <sessionID> <limitMessages> <includeSubagents>` -> includeSubagents must be true or false
+
+Parse arguments positionally:
+1. First arg = sessionID. If missing, leave sessionID unset/empty for the current session.
+2. Second arg = limitMessages. If missing, use 3. Valid range: 1-10.
+3. Third arg = includeSubagents. If missing, use true. Valid values: true|false.
+
+After the tool finishes, read `token-usage-output.txt` and respond with only this concise summary:
+
+Key metrics:
+- Cache Hit Rate: <value>
+- Session tokens: <value>
+- Estimated API cost: <value>
+- Cache savings: <Cost Savings value and percent>
+- Effective Rate: <value>
+
+Do not print the full report or raw box charts. If a value is missing, write `not found`.
 EOF
 ```
 
@@ -106,7 +126,22 @@ The plugin will:
 - **limitMessages**: Limit entries shown per category (1-10, default: 3)
 - **includeSubagents**: Include subagent child session costs (default: true)
 
+### Output
+
+By default, `/tokenscope` returns a concise summary with the most important cache and cost metrics:
+
+```text
+Key metrics:
+- Cache Hit Rate: 94.7%
+- Session tokens: 2,703,770
+- Estimated API cost: $0.5625
+- Cache savings: $2.8942 (85.9%)
+- Effective Rate: $0.18/M tokens
+```
+
 ### Reading the Full Report
+
+The full detailed report is still saved to `token-usage-output.txt`.
 
 ```bash
 cat token-usage-output.txt
