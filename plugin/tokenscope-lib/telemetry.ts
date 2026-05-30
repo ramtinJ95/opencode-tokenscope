@@ -92,12 +92,34 @@ function getMessageRole(message: TelemetryMessageLike): string | undefined {
 }
 
 function getModelRef(message: TelemetryMessageLike, part?: TelemetryPartLike): ModelRefLike {
-  const source = part?.model ?? message.info?.model ?? message.data?.model ?? message.model ?? {}
+  const partModel = part?.model
+  const dataModel = message.data?.model
+  const infoModel = message.info?.model
+  const topLevelModel = message.model
+
   return {
     providerID: normalizeString(
-      source.providerID ?? message.info?.providerID ?? message.data?.providerID ?? message.providerID
+      partModel?.providerID ??
+        dataModel?.providerID ??
+        message.data?.providerID ??
+        infoModel?.providerID ??
+        message.info?.providerID ??
+        topLevelModel?.providerID ??
+        message.providerID
     ),
-    modelID: normalizeString(source.modelID ?? source.id ?? message.info?.modelID ?? message.data?.modelID ?? message.modelID),
+    modelID: normalizeString(
+      partModel?.modelID ??
+        partModel?.id ??
+        dataModel?.modelID ??
+        dataModel?.id ??
+        message.data?.modelID ??
+        infoModel?.modelID ??
+        infoModel?.id ??
+        message.info?.modelID ??
+        topLevelModel?.modelID ??
+        topLevelModel?.id ??
+        message.modelID
+    ),
   }
 }
 
