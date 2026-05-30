@@ -1,8 +1,10 @@
 // Telemetry helpers - extracts per-API-call token and cost data from stored session messages
 
-import type { TokenUsage } from "./types.js"
+import type { ModelTokenUsage, TokenUsage } from "./types.js"
 
 export interface TelemetryCall {
+  providerID?: string
+  modelID?: string
   inputTokens: number
   outputTokens: number
   reasoningTokens: number
@@ -30,21 +32,45 @@ export interface TelemetrySummary {
   mostRecentCacheWrite: number
   mostRecentCost: number
   mostRecentProviderTotalTokens?: number
+  perModelUsage: ModelTokenUsage[]
+}
+
+type ModelRefLike = {
+  providerID?: string
+  modelID?: string
+  id?: string
 }
 
 type TelemetryPartLike = {
   type?: string
   tokens?: TokenUsage
   cost?: number
+  model?: ModelRefLike
 }
 
 type TelemetryMessageLike = {
-  info: {
+  info?: {
     role?: string
     tokens?: TokenUsage
     cost?: number
+    providerID?: string
+    modelID?: string
+    model?: ModelRefLike
   }
-  parts: TelemetryPartLike[]
+  data?: {
+    role?: string
+    tokens?: TokenUsage
+    cost?: number
+    providerID?: string
+    modelID?: string
+    model?: ModelRefLike
+  }
+  role?: string
+  type?: string
+  tokens?: TokenUsage
+  cost?: number
+  model?: ModelRefLike
+  parts?: TelemetryPartLike[]
 }
 
 function safeNumber(value: unknown): number {
@@ -55,7 +81,36 @@ function hasExplicitNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value)
 }
 
-function buildTelemetryCall(tokens: TokenUsage | undefined, cost: unknown, force: boolean): TelemetryCall | null {
+function normalizeString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined
+}
+
+function getMessageRole(message: TelemetryMessageLike): string | undefined {
+  return message.info?.role ?? message.data?.role ?? message.role ?? message.type
+}
+
+function getModelRef(message: TelemetryMessageLike, part?: TelemetryPartLike): ModelRefLike {
+  const source = part?.model ?? message.info?.model ?? message.data?.model ?? message.model ?? {}
+  return {
+    providerID: normalizeString(source.providerID ?? message.info?.providerID ?? message.data?.providerID),
+    modelID: normalizeString(source.modelID ?? source.id ?? message.info?.modelID ?? message.data?.modelID),
+  }
+}
+
+function getMessageTokens(message: TelemetryMessageLike): TokenUsage | undefined {
+  return message.info?.tokens ?? message.data?.tokens ?? message.tokens
+}
+
+function getMessageCost(message: TelemetryMessageLike): unknown {
+  return message.info?.cost ?? message.data?.cost ?? message.cost
+}
+
+function buildTelemetryCall(
+  tokens: TokenUsage | undefined,
+  cost: unknown,
+  force: boolean,
+  model: ModelRefLike
+): TelemetryCall | null {
   const inputTokens = safeNumber(tokens?.input)
   const outputTokens = safeNumber(tokens?.output)
   const reasoningTokens = safeNumber(tokens?.reasoning)
@@ -72,6 +127,8 @@ function buildTelemetryCall(tokens: TokenUsage | undefined, cost: unknown, force
   if (!force && !hasActivity) return null
 
   return {
+    providerID: model.providerID,
+    modelID: model.modelID,
     inputTokens,
     outputTokens,
     reasoningTokens,
@@ -86,22 +143,67 @@ function isStepFinishPart(part: TelemetryPartLike): part is Required<Pick<Teleme
   return part.type === "step-finish"
 }
 
+function modelDisplayName(providerID?: string, modelID?: string): string {
+  if (providerID && modelID) return `${providerID}/${modelID}`
+  return modelID ?? providerID ?? "unknown model"
+}
+
+function modelGroupingKey(providerID?: string, modelID?: string): string {
+  return `${providerID ?? ""}\u0000${modelID ?? ""}`
+}
+
+function summarizeCallsByModel(calls: TelemetryCall[]): ModelTokenUsage[] {
+  const byModel = new Map<string, ModelTokenUsage>()
+
+  for (const call of calls) {
+    const key = modelGroupingKey(call.providerID, call.modelID)
+    const existing = byModel.get(key) ?? {
+      providerID: call.providerID,
+      modelID: call.modelID,
+      modelName: modelDisplayName(call.providerID, call.modelID),
+      inputTokens: 0,
+      outputTokens: 0,
+      reasoningTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      apiCost: 0,
+      apiCallCount: 0,
+      callsWithCacheRead: 0,
+      callsWithCacheWrite: 0,
+    }
+
+    existing.inputTokens += call.inputTokens
+    existing.outputTokens += call.outputTokens
+    existing.reasoningTokens += call.reasoningTokens
+    existing.cacheReadTokens += call.cacheReadTokens
+    existing.cacheWriteTokens += call.cacheWriteTokens
+    existing.apiCost += call.cost
+    existing.apiCallCount += 1
+    if (call.cacheReadTokens > 0) existing.callsWithCacheRead += 1
+    if (call.cacheWriteTokens > 0) existing.callsWithCacheWrite += 1
+
+    byModel.set(key, existing)
+  }
+
+  return Array.from(byModel.values()).sort((a, b) => b.apiCallCount - a.apiCallCount || a.modelName.localeCompare(b.modelName))
+}
+
 export function collectTelemetryCalls(messages: TelemetryMessageLike[]): TelemetryCall[] {
   const calls: TelemetryCall[] = []
 
   for (const message of messages) {
-    if (message.info.role !== "assistant") continue
+    if (getMessageRole(message) !== "assistant") continue
 
-    const stepFinishParts = message.parts.filter(isStepFinishPart)
+    const stepFinishParts = (message.parts ?? []).filter(isStepFinishPart)
     if (stepFinishParts.length > 0) {
       for (const part of stepFinishParts) {
-        const call = buildTelemetryCall(part.tokens, part.cost, true)
+        const call = buildTelemetryCall(part.tokens, part.cost, true, getModelRef(message, part))
         if (call) calls.push(call)
       }
       continue
     }
 
-    const fallback = buildTelemetryCall(message.info.tokens, message.info.cost, false)
+    const fallback = buildTelemetryCall(getMessageTokens(message), getMessageCost(message), false, getModelRef(message))
     if (fallback) calls.push(fallback)
   }
 
@@ -109,7 +211,7 @@ export function collectTelemetryCalls(messages: TelemetryMessageLike[]): Telemet
 }
 
 export function summarizeTelemetry(messages: TelemetryMessageLike[]): TelemetrySummary {
-  const assistantMessageCount = messages.reduce((count, message) => count + (message.info.role === "assistant" ? 1 : 0), 0)
+  const assistantMessageCount = messages.reduce((count, message) => count + (getMessageRole(message) === "assistant" ? 1 : 0), 0)
   const calls = collectTelemetryCalls(messages)
 
   let inputTokens = 0
@@ -153,6 +255,7 @@ export function summarizeTelemetry(messages: TelemetryMessageLike[]): TelemetryS
     mostRecentCacheWrite: mostRecent?.cacheWriteTokens ?? 0,
     mostRecentCost: mostRecent?.cost ?? 0,
     mostRecentProviderTotalTokens: mostRecent?.providerTotalTokens,
+    perModelUsage: summarizeCallsByModel(calls),
   }
 }
 

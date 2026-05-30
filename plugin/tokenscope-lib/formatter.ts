@@ -10,6 +10,7 @@ import type {
   CacheEfficiency,
   TokenscopeConfig,
   SkillAnalysis,
+  ModelCostEstimate,
 } from "./types.js"
 import { CostCalculator } from "./cost.js"
 
@@ -298,22 +299,7 @@ export class OutputFormatter {
       lines.push(`You appear to be on a subscription plan (API cost is $0).`)
       lines.push(`Here's what this session would cost with direct API access:`)
       lines.push(``)
-      lines.push(
-        `  Input tokens:      ${this.formatNumber(inputTokens).padStart(10)} \u00d7 $${cost.pricePerMillionInput.toFixed(2)}/M  = $${cost.estimatedInputCost.toFixed(4)}`
-      )
-      lines.push(
-        `  Output tokens:     ${this.formatNumber(outputTokens + reasoningTokens).padStart(10)} \u00d7 $${cost.pricePerMillionOutput.toFixed(2)}/M  = $${cost.estimatedOutputCost.toFixed(4)}`
-      )
-      if (cacheReadTokens > 0 && cost.pricePerMillionCacheRead > 0) {
-        lines.push(
-          `  Cache read:        ${this.formatNumber(cacheReadTokens).padStart(10)} \u00d7 $${cost.pricePerMillionCacheRead.toFixed(2)}/M  = $${cost.estimatedCacheReadCost.toFixed(4)}`
-        )
-      }
-      if (cacheWriteTokens > 0 && cost.pricePerMillionCacheWrite > 0) {
-        lines.push(
-          `  Cache write:       ${this.formatNumber(cacheWriteTokens).padStart(10)} \u00d7 $${cost.pricePerMillionCacheWrite.toFixed(2)}/M  = $${cost.estimatedCacheWriteCost.toFixed(4)}`
-        )
-      }
+      lines.push(...this.formatCostEstimateLines(cost))
       lines.push(`\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
       lines.push(`ESTIMATED TOTAL: $${cost.estimatedSessionCost.toFixed(4)}`)
       lines.push(``)
@@ -334,6 +320,11 @@ export class OutputFormatter {
       }
       if (cacheWriteTokens > 0) {
         lines.push(`  Cache write:       ${this.formatNumber(cacheWriteTokens).padStart(10)}`)
+      }
+      if (cost.perModelCosts.length > 1) {
+        lines.push(``)
+        lines.push(`Per-model estimated API pricing:`)
+        lines.push(...this.formatCostEstimateLines(cost))
       }
       lines.push(``)
       lines.push(`\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
@@ -761,6 +752,65 @@ export class OutputFormatter {
     lines.push(
       `  Note: Full task tool description is ~${this.formatNumber(analysis.taskToolDescriptionTokens)} tokens (includes instructions/examples).`
     )
+
+    return lines
+  }
+
+  private formatCostEstimateLines(cost: CostEstimate): string[] {
+    const hasMultipleModels = cost.perModelCosts.length > 1
+
+    if (!hasMultipleModels) {
+      return this.formatSingleModelCostLines(cost)
+    }
+
+    const lines: string[] = []
+    for (const modelCost of cost.perModelCosts) {
+      lines.push(
+        `  ${modelCost.modelName} (${modelCost.apiCallCount} call${modelCost.apiCallCount === 1 ? "" : "s"}): $${modelCost.estimatedSessionCost.toFixed(4)}`
+      )
+      if (!modelCost.hasPricing) {
+        lines.push(`    Pricing not found; used fallback default rates.`)
+      }
+      lines.push(...this.formatModelCostTokenLines(modelCost, "    "))
+    }
+
+    lines.push(``)
+    lines.push(`  Blended input:      $${cost.estimatedInputCost.toFixed(4)}`)
+    lines.push(`  Blended output:     $${cost.estimatedOutputCost.toFixed(4)}`)
+    if (cost.cacheReadTokens > 0) lines.push(`  Blended cache read: $${cost.estimatedCacheReadCost.toFixed(4)}`)
+    if (cost.cacheWriteTokens > 0) lines.push(`  Blended cache write: $${cost.estimatedCacheWriteCost.toFixed(4)}`)
+
+    return lines
+  }
+
+  private formatSingleModelCostLines(cost: CostEstimate): string[] {
+    const modelCost = cost.perModelCosts[0]
+    if (modelCost) return this.formatModelCostTokenLines(modelCost, "  ")
+
+    return [
+      `  Input tokens:      ${this.formatNumber(cost.inputTokens).padStart(10)} × $${cost.pricePerMillionInput.toFixed(2)}/M  = $${cost.estimatedInputCost.toFixed(4)}`,
+      `  Output tokens:     ${this.formatNumber(cost.outputTokens + cost.reasoningTokens).padStart(10)} × $${cost.pricePerMillionOutput.toFixed(2)}/M  = $${cost.estimatedOutputCost.toFixed(4)}`,
+    ]
+  }
+
+  private formatModelCostTokenLines(modelCost: ModelCostEstimate, indent: string): string[] {
+    const lines: string[] = []
+    lines.push(
+      `${indent}Input tokens:      ${this.formatNumber(modelCost.inputTokens).padStart(10)} × $${modelCost.pricePerMillionInput.toFixed(2)}/M  = $${modelCost.estimatedInputCost.toFixed(4)}`
+    )
+    lines.push(
+      `${indent}Output tokens:     ${this.formatNumber(modelCost.outputTokens + modelCost.reasoningTokens).padStart(10)} × $${modelCost.pricePerMillionOutput.toFixed(2)}/M  = $${modelCost.estimatedOutputCost.toFixed(4)}`
+    )
+    if (modelCost.cacheReadTokens > 0) {
+      lines.push(
+        `${indent}Cache read:        ${this.formatNumber(modelCost.cacheReadTokens).padStart(10)} × $${modelCost.pricePerMillionCacheRead.toFixed(2)}/M  = $${modelCost.estimatedCacheReadCost.toFixed(4)}`
+      )
+    }
+    if (modelCost.cacheWriteTokens > 0) {
+      lines.push(
+        `${indent}Cache write:       ${this.formatNumber(modelCost.cacheWriteTokens).padStart(10)} × $${modelCost.pricePerMillionCacheWrite.toFixed(2)}/M  = $${modelCost.estimatedCacheWriteCost.toFixed(4)}`
+      )
+    }
 
     return lines
   }

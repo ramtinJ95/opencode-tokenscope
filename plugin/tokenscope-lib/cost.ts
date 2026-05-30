@@ -1,12 +1,14 @@
 // CostCalculator - calculates costs from token analysis
 
-import type { TokenAnalysis, CostEstimate, ModelPricing } from "./types.js"
+import type { TokenAnalysis, CostEstimate, ModelCostEstimate, ModelPricing, ModelTokenUsage } from "./types.js"
 
 export class CostCalculator {
   constructor(private pricingData: Record<string, ModelPricing>) {}
 
   calculateCost(analysis: TokenAnalysis): CostEstimate {
-    const pricing = this.getPricing(analysis.pricingModelName ?? analysis.model.name)
+    const fallbackPricingModelName = analysis.pricingModelName ?? analysis.model.name
+    const perModelCosts = this.calculatePerModelCosts(analysis, fallbackPricingModelName)
+    const pricing = this.getPricing(fallbackPricingModelName)
     const hasActivity =
       analysis.apiCallCount > 0 &&
       (analysis.inputTokens > 0 ||
@@ -16,12 +18,11 @@ export class CostCalculator {
         analysis.cacheWriteTokens > 0)
     const isSubscription = hasActivity && analysis.sessionCost === 0
 
-    const estimatedInputCost = (analysis.inputTokens / 1_000_000) * pricing.input
-    const estimatedOutputCost = ((analysis.outputTokens + analysis.reasoningTokens) / 1_000_000) * pricing.output
-    const estimatedCacheReadCost = (analysis.cacheReadTokens / 1_000_000) * pricing.cacheRead
-    const estimatedCacheWriteCost = (analysis.cacheWriteTokens / 1_000_000) * pricing.cacheWrite
-    const estimatedSessionCost =
-      estimatedInputCost + estimatedOutputCost + estimatedCacheReadCost + estimatedCacheWriteCost
+    const estimatedInputCost = perModelCosts.reduce((sum, model) => sum + model.estimatedInputCost, 0)
+    const estimatedOutputCost = perModelCosts.reduce((sum, model) => sum + model.estimatedOutputCost, 0)
+    const estimatedCacheReadCost = perModelCosts.reduce((sum, model) => sum + model.estimatedCacheReadCost, 0)
+    const estimatedCacheWriteCost = perModelCosts.reduce((sum, model) => sum + model.estimatedCacheWriteCost, 0)
+    const estimatedSessionCost = perModelCosts.reduce((sum, model) => sum + model.estimatedSessionCost, 0)
 
     return {
       isSubscription,
@@ -41,6 +42,53 @@ export class CostCalculator {
       reasoningTokens: analysis.reasoningTokens,
       cacheReadTokens: analysis.cacheReadTokens,
       cacheWriteTokens: analysis.cacheWriteTokens,
+      perModelCosts,
+      unknownPricingModels: perModelCosts.filter((model) => !model.hasPricing).map((model) => model.pricingModelName),
+    }
+  }
+
+  private calculatePerModelCosts(analysis: TokenAnalysis, fallbackPricingModelName: string): ModelCostEstimate[] {
+    const usage = analysis.perModelUsage.length > 0 ? analysis.perModelUsage : [this.buildFallbackUsage(analysis)]
+
+    return usage.map((modelUsage) => {
+      const pricingModelName =
+        this.buildLookupKey(modelUsage.providerID, modelUsage.modelID) || modelUsage.modelName || fallbackPricingModelName
+      const pricing = this.getPricing(pricingModelName)
+      const estimatedInputCost = (modelUsage.inputTokens / 1_000_000) * pricing.input
+      const estimatedOutputCost = ((modelUsage.outputTokens + modelUsage.reasoningTokens) / 1_000_000) * pricing.output
+      const estimatedCacheReadCost = (modelUsage.cacheReadTokens / 1_000_000) * pricing.cacheRead
+      const estimatedCacheWriteCost = (modelUsage.cacheWriteTokens / 1_000_000) * pricing.cacheWrite
+
+      return {
+        ...modelUsage,
+        pricingModelName,
+        hasPricing: this.hasPricing(pricingModelName),
+        estimatedSessionCost:
+          estimatedInputCost + estimatedOutputCost + estimatedCacheReadCost + estimatedCacheWriteCost,
+        estimatedInputCost,
+        estimatedOutputCost,
+        estimatedCacheReadCost,
+        estimatedCacheWriteCost,
+        pricePerMillionInput: pricing.input,
+        pricePerMillionOutput: pricing.output,
+        pricePerMillionCacheRead: pricing.cacheRead,
+        pricePerMillionCacheWrite: pricing.cacheWrite,
+      }
+    })
+  }
+
+  private buildFallbackUsage(analysis: TokenAnalysis): ModelTokenUsage {
+    return {
+      modelName: analysis.pricingModelName ?? analysis.model.name,
+      inputTokens: analysis.inputTokens,
+      outputTokens: analysis.outputTokens,
+      reasoningTokens: analysis.reasoningTokens,
+      cacheReadTokens: analysis.cacheReadTokens,
+      cacheWriteTokens: analysis.cacheWriteTokens,
+      apiCost: analysis.sessionCost,
+      apiCallCount: analysis.apiCallCount,
+      callsWithCacheRead: analysis.callsWithCacheRead,
+      callsWithCacheWrite: analysis.callsWithCacheWrite,
     }
   }
 

@@ -86,8 +86,11 @@ export class SubagentAnalyzer {
 
       for (const message of messages) {
         if (message.info.role !== "assistant") continue
-        if (message.info.providerID) providerID = message.info.providerID
-        if (message.info.modelID) modelName = message.info.modelID
+        const messageProviderID = message.info.providerID ?? message.info.model?.providerID
+        const messageModelID = message.info.modelID ?? message.info.model?.modelID ?? message.info.model?.id
+
+        if (messageProviderID) providerID = messageProviderID
+        if (messageModelID) modelName = messageModelID
       }
 
       const inputTokens = telemetry.inputTokens
@@ -99,13 +102,17 @@ export class SubagentAnalyzer {
       const assistantMessageCount = telemetry.assistantMessageCount
       const apiCallCount = telemetry.apiCallCount
       const totalTokens = inputTokens + outputTokens + reasoningTokens + cacheReadTokens + cacheWriteTokens
-      const pricingModelName = this.costCalculator.buildLookupKey(providerID, modelName) || modelName
-      const pricing = this.costCalculator.getPricing(pricingModelName)
-      const estimatedCost =
-        (inputTokens / 1_000_000) * pricing.input +
-        ((outputTokens + reasoningTokens) / 1_000_000) * pricing.output +
-        (cacheReadTokens / 1_000_000) * pricing.cacheRead +
-        (cacheWriteTokens / 1_000_000) * pricing.cacheWrite
+      const estimatedCost = telemetry.perModelUsage.reduce((sum, modelUsage) => {
+        const pricingModelName = this.costCalculator.buildLookupKey(modelUsage.providerID, modelUsage.modelID) || modelUsage.modelName
+        const pricing = this.costCalculator.getPricing(pricingModelName)
+        return (
+          sum +
+          (modelUsage.inputTokens / 1_000_000) * pricing.input +
+          ((modelUsage.outputTokens + modelUsage.reasoningTokens) / 1_000_000) * pricing.output +
+          (modelUsage.cacheReadTokens / 1_000_000) * pricing.cacheRead +
+          (modelUsage.cacheWriteTokens / 1_000_000) * pricing.cacheWrite
+        )
+      }, 0)
 
       return {
         sessionID: child.id,
