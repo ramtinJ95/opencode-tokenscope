@@ -8,7 +8,13 @@ import type {
   ModelTokenUsage,
   ModelTokenUsageCall,
 } from "./types.js"
-import { hasTokenActivity, positiveTokenDelta, rawContextTokens, sumTokenBuckets } from "./usage-buckets.js"
+import {
+  hasTokenActivity,
+  positiveTokenDelta,
+  rawContextTokens,
+  sumTokenBuckets,
+  type TokenBuckets,
+} from "./usage-buckets.js"
 
 type PricingRates = {
   input: number
@@ -27,6 +33,13 @@ type CostComponents = {
   rates: PricingRates
   usesTieredPricing: boolean
   hasVariablePricingRates: boolean
+}
+
+type UsageMetadata = {
+  apiCost?: number
+  apiCallCount?: number
+  callsWithCacheRead?: number
+  callsWithCacheWrite?: number
 }
 
 const DEFAULT_PRICING: ModelPricing = { input: 1, output: 3, cacheWrite: 0, cacheRead: 0 }
@@ -112,10 +125,9 @@ export class CostCalculator {
   }
 
   private buildEstimateUsage(analysis: TokenAnalysis, fallbackPricingModelName: string): ModelTokenUsage[] {
-    if (analysis.perModelUsage.length === 0) return [this.buildFallbackUsage(analysis)]
-
-    const totals = sumTokenBuckets(analysis.perModelUsage)
-    const delta = positiveTokenDelta(
+    return this.reconcileAggregateUsage(
+      analysis.perModelUsage,
+      fallbackPricingModelName,
       {
         inputTokens: analysis.inputTokens,
         outputTokens: analysis.outputTokens,
@@ -123,21 +135,35 @@ export class CostCalculator {
         cacheReadTokens: analysis.cacheReadTokens,
         cacheWriteTokens: analysis.cacheWriteTokens,
       },
-      totals
+      {
+        apiCost: analysis.sessionCost,
+        apiCallCount: analysis.apiCallCount,
+        callsWithCacheRead: analysis.callsWithCacheRead,
+        callsWithCacheWrite: analysis.callsWithCacheWrite,
+      }
     )
+  }
 
-    if (!hasTokenActivity(delta)) return analysis.perModelUsage
+  reconcileAggregateUsage(
+    perModelUsage: ModelTokenUsage[],
+    fallbackPricingModelName: string,
+    aggregate: TokenBuckets,
+    fallbackMetadata: UsageMetadata = {}
+  ): ModelTokenUsage[] {
+    if (perModelUsage.length === 0) {
+      return [this.buildFallbackUsage(fallbackPricingModelName, aggregate, fallbackMetadata)]
+    }
+
+    const delta = positiveTokenDelta(aggregate, sumTokenBuckets(perModelUsage))
+
+    if (!hasTokenActivity(delta)) return perModelUsage
 
     return [
-      ...analysis.perModelUsage,
-      {
-        modelName: fallbackPricingModelName,
-        ...delta,
-        apiCost: 0,
-        apiCallCount: 0,
+      ...perModelUsage,
+      this.buildFallbackUsage(fallbackPricingModelName, delta, {
         callsWithCacheRead: delta.cacheReadTokens > 0 ? 1 : 0,
         callsWithCacheWrite: delta.cacheWriteTokens > 0 ? 1 : 0,
-      },
+      }),
     ]
   }
 
@@ -214,18 +240,18 @@ export class CostCalculator {
     return fallbackPricingModelName
   }
 
-  private buildFallbackUsage(analysis: TokenAnalysis): ModelTokenUsage {
+  private buildFallbackUsage(
+    fallbackPricingModelName: string,
+    usage: TokenBuckets,
+    metadata: UsageMetadata = {}
+  ): ModelTokenUsage {
     return {
-      modelName: analysis.pricingModelName ?? analysis.model.name,
-      inputTokens: analysis.inputTokens,
-      outputTokens: analysis.outputTokens,
-      reasoningTokens: analysis.reasoningTokens,
-      cacheReadTokens: analysis.cacheReadTokens,
-      cacheWriteTokens: analysis.cacheWriteTokens,
-      apiCost: analysis.sessionCost,
-      apiCallCount: analysis.apiCallCount,
-      callsWithCacheRead: analysis.callsWithCacheRead,
-      callsWithCacheWrite: analysis.callsWithCacheWrite,
+      modelName: fallbackPricingModelName,
+      ...usage,
+      apiCost: metadata.apiCost ?? 0,
+      apiCallCount: metadata.apiCallCount ?? 0,
+      callsWithCacheRead: metadata.callsWithCacheRead ?? 0,
+      callsWithCacheWrite: metadata.callsWithCacheWrite ?? 0,
     }
   }
 

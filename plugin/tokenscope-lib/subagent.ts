@@ -1,6 +1,6 @@
 // SubagentAnalyzer - analyzes child sessions from Task tool calls
 
-import type { ModelTokenUsage, SessionMessage, SubagentSummary, SubagentAnalysis, ChildSession } from "./types.js"
+import type { SessionMessage, SubagentSummary, SubagentAnalysis, ChildSession } from "./types.js"
 import { CostCalculator } from "./cost.js"
 import { fetchSessionChildren, fetchSessionMessages, unwrapResponseData } from "./opencode.js"
 import { summarizeTelemetry } from "./telemetry.js"
@@ -8,12 +8,9 @@ import {
   hasLowerAggregateBucket,
   hasTokenActivity,
   mergeTokenBuckets,
-  positiveTokenDelta,
   readTokenBuckets,
   safeTokenNumber,
-  sumTokenBuckets,
   totalTokenBuckets,
-  type TokenBuckets,
 } from "./usage-buckets.js"
 import { WarningCollector, formatErrorMessage } from "./warnings.js"
 
@@ -122,7 +119,7 @@ export class SubagentAnalyzer {
       const totalTokens = totalTokenBuckets(finalTokens)
       if (messages.length === 0 && totalTokens === 0 && apiCost === 0) return null
       const fallbackPricingModelName = this.costCalculator.buildLookupKey(providerID, modelName) || modelName
-      const costUsage = this.buildCostUsage(telemetry.perModelUsage, fallbackPricingModelName, {
+      const costUsage = this.costCalculator.reconcileAggregateUsage(telemetry.perModelUsage, fallbackPricingModelName, {
         inputTokens: finalTokens.inputTokens,
         outputTokens: finalTokens.outputTokens,
         reasoningTokens: finalTokens.reasoningTokens,
@@ -202,32 +199,6 @@ export class SubagentAnalyzer {
     }
 
     return { providerID, modelName }
-  }
-
-  private buildCostUsage(
-    telemetryUsage: ModelTokenUsage[],
-    fallbackPricingModelName: string,
-    aggregate: TokenBuckets
-  ) {
-    if (telemetryUsage.length === 0) {
-      return [this.buildFallbackUsage(fallbackPricingModelName, aggregate)]
-    }
-
-    const delta = positiveTokenDelta(aggregate, sumTokenBuckets(telemetryUsage))
-    if (!hasTokenActivity(delta)) return telemetryUsage
-
-    return [...telemetryUsage, this.buildFallbackUsage(fallbackPricingModelName, delta)]
-  }
-
-  private buildFallbackUsage(fallbackPricingModelName: string, usage: TokenBuckets) {
-    return {
-      modelName: fallbackPricingModelName,
-      ...usage,
-      apiCost: 0,
-      apiCallCount: 0,
-      callsWithCacheRead: usage.cacheReadTokens > 0 ? 1 : 0,
-      callsWithCacheWrite: usage.cacheWriteTokens > 0 ? 1 : 0,
-    }
   }
 
   private normalizeString(value: unknown): string | undefined {
