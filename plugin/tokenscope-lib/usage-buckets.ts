@@ -46,6 +46,16 @@ export function completeTokenBuckets(buckets: PartialTokenBuckets | null | undef
   }
 }
 
+export function mergeTokenBuckets(primary: PartialTokenBuckets | null | undefined, fallback: PartialTokenBuckets): TokenBuckets {
+  return {
+    inputTokens: primary?.inputTokens ?? fallback.inputTokens ?? 0,
+    outputTokens: primary?.outputTokens ?? fallback.outputTokens ?? 0,
+    reasoningTokens: primary?.reasoningTokens ?? fallback.reasoningTokens ?? 0,
+    cacheReadTokens: primary?.cacheReadTokens ?? fallback.cacheReadTokens ?? 0,
+    cacheWriteTokens: primary?.cacheWriteTokens ?? fallback.cacheWriteTokens ?? 0,
+  }
+}
+
 export function totalTokenBuckets(buckets: PartialTokenBuckets): number {
   return (
     (buckets.inputTokens ?? 0) +

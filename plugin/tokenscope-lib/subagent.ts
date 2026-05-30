@@ -1,9 +1,20 @@
 // SubagentAnalyzer - analyzes child sessions from Task tool calls
 
-import type { SessionMessage, SubagentSummary, SubagentAnalysis, ChildSession, TokenUsage } from "./types.js"
+import type { ModelTokenUsage, SessionMessage, SubagentSummary, SubagentAnalysis, ChildSession } from "./types.js"
 import { CostCalculator } from "./cost.js"
 import { fetchSessionChildren, fetchSessionMessages, unwrapResponseData } from "./opencode.js"
 import { summarizeTelemetry } from "./telemetry.js"
+import {
+  hasLowerAggregateBucket,
+  hasTokenActivity,
+  mergeTokenBuckets,
+  positiveTokenDelta,
+  readTokenBuckets,
+  safeTokenNumber,
+  sumTokenBuckets,
+  totalTokenBuckets,
+  type TokenBuckets,
+} from "./usage-buckets.js"
 import { WarningCollector, formatErrorMessage } from "./warnings.js"
 
 export class SubagentAnalyzer {
@@ -90,17 +101,15 @@ export class SubagentAnalyzer {
         cacheReadTokens: telemetry.cacheReadTokens,
         cacheWriteTokens: telemetry.cacheWriteTokens,
       }
-      const sessionTokens = this.readSessionTokens(child.tokens)
-      const sessionTokensHaveActivity = sessionTokens ? this.totalTokens(sessionTokens) > 0 : false
-      const telemetryHasActivity = this.totalTokens(telemetryTokens) > 0 || telemetry.sessionCost > 0
-      const sessionTokensAreConsistent = sessionTokens
-        ? !this.hasInconsistentAggregateBuckets(sessionTokens, telemetryTokens)
-        : true
+      const sessionTokens = readTokenBuckets(child.tokens)
+      const sessionTokensHaveActivity = hasTokenActivity(sessionTokens)
+      const telemetryHasActivity = hasTokenActivity(telemetryTokens) || telemetry.sessionCost > 0
+      const sessionTokensAreConsistent = sessionTokens ? !hasLowerAggregateBucket(sessionTokens, telemetryTokens) : true
       const effectiveSessionTokens =
         sessionTokens && sessionTokensAreConsistent && (sessionTokensHaveActivity || !telemetryHasActivity)
           ? sessionTokens
           : null
-      const childCost = this.safeNumber(child.cost)
+      const childCost = safeTokenNumber(child.cost)
       const childCostIsConsistent = childCost === undefined || telemetry.sessionCost === 0 || childCost >= telemetry.sessionCost
       const apiCost =
         childCost !== undefined && childCostIsConsistent && (childCost > 0 || !telemetryHasActivity)
@@ -109,21 +118,16 @@ export class SubagentAnalyzer {
 
       const assistantMessageCount = telemetry.assistantMessageCount
       const apiCallCount = telemetry.apiCallCount
-      const finalInputTokens = effectiveSessionTokens?.inputTokens ?? telemetryTokens.inputTokens
-      const finalOutputTokens = effectiveSessionTokens?.outputTokens ?? telemetryTokens.outputTokens
-      const finalReasoningTokens = effectiveSessionTokens?.reasoningTokens ?? telemetryTokens.reasoningTokens
-      const finalCacheReadTokens = effectiveSessionTokens?.cacheReadTokens ?? telemetryTokens.cacheReadTokens
-      const finalCacheWriteTokens = effectiveSessionTokens?.cacheWriteTokens ?? telemetryTokens.cacheWriteTokens
-      const totalTokens =
-        finalInputTokens + finalOutputTokens + finalReasoningTokens + finalCacheReadTokens + finalCacheWriteTokens
+      const finalTokens = mergeTokenBuckets(effectiveSessionTokens, telemetryTokens)
+      const totalTokens = totalTokenBuckets(finalTokens)
       if (messages.length === 0 && totalTokens === 0 && apiCost === 0) return null
       const fallbackPricingModelName = this.costCalculator.buildLookupKey(providerID, modelName) || modelName
       const costUsage = this.buildCostUsage(telemetry.perModelUsage, fallbackPricingModelName, {
-        inputTokens: finalInputTokens,
-        outputTokens: finalOutputTokens,
-        reasoningTokens: finalReasoningTokens,
-        cacheReadTokens: finalCacheReadTokens,
-        cacheWriteTokens: finalCacheWriteTokens,
+        inputTokens: finalTokens.inputTokens,
+        outputTokens: finalTokens.outputTokens,
+        reasoningTokens: finalTokens.reasoningTokens,
+        cacheReadTokens: finalTokens.cacheReadTokens,
+        cacheWriteTokens: finalTokens.cacheWriteTokens,
       })
       const estimatedCost = costUsage.reduce((sum, modelUsage) => {
         const pricingModelName = this.costCalculator.resolvePricingModelName(modelUsage, fallbackPricingModelName)
@@ -140,11 +144,11 @@ export class SubagentAnalyzer {
         sessionID: child.id,
         title: child.title,
         agentType,
-        inputTokens: finalInputTokens,
-        outputTokens: finalOutputTokens,
-        reasoningTokens: finalReasoningTokens,
-        cacheReadTokens: finalCacheReadTokens,
-        cacheWriteTokens: finalCacheWriteTokens,
+        inputTokens: finalTokens.inputTokens,
+        outputTokens: finalTokens.outputTokens,
+        reasoningTokens: finalTokens.reasoningTokens,
+        cacheReadTokens: finalTokens.cacheReadTokens,
+        cacheWriteTokens: finalTokens.cacheWriteTokens,
         totalTokens,
         apiCost,
         estimatedCost,
@@ -200,112 +204,22 @@ export class SubagentAnalyzer {
     return { providerID, modelName }
   }
 
-  private readSessionTokens(tokens: TokenUsage | undefined): {
-    inputTokens?: number
-    outputTokens?: number
-    reasoningTokens?: number
-    cacheReadTokens?: number
-    cacheWriteTokens?: number
-  } | null {
-    if (!tokens) return null
-
-    const inputTokens = this.safeNumber(tokens.input)
-    const outputTokens = this.safeNumber(tokens.output)
-    const reasoningTokens = this.safeNumber(tokens.reasoning)
-    const cacheReadTokens = this.safeNumber(tokens.cache?.read)
-    const cacheWriteTokens = this.safeNumber(tokens.cache?.write)
-
-    if (
-      inputTokens === undefined &&
-      outputTokens === undefined &&
-      reasoningTokens === undefined &&
-      cacheReadTokens === undefined &&
-      cacheWriteTokens === undefined
-    ) {
-      return null
-    }
-
-    return {
-      inputTokens,
-      outputTokens,
-      reasoningTokens,
-      cacheReadTokens,
-      cacheWriteTokens,
-    }
-  }
-
   private buildCostUsage(
-    telemetryUsage: Array<{
-      modelName: string
-      providerID?: string
-      modelID?: string
-      inputTokens: number
-      outputTokens: number
-      reasoningTokens: number
-      cacheReadTokens: number
-      cacheWriteTokens: number
-      apiCost: number
-      apiCallCount: number
-      callsWithCacheRead: number
-      callsWithCacheWrite: number
-      calls?: Array<{
-        inputTokens: number
-        outputTokens: number
-        reasoningTokens: number
-        cacheReadTokens: number
-        cacheWriteTokens: number
-      }>
-    }>,
+    telemetryUsage: ModelTokenUsage[],
     fallbackPricingModelName: string,
-    aggregate: {
-      inputTokens: number
-      outputTokens: number
-      reasoningTokens: number
-      cacheReadTokens: number
-      cacheWriteTokens: number
-    }
+    aggregate: TokenBuckets
   ) {
     if (telemetryUsage.length === 0) {
       return [this.buildFallbackUsage(fallbackPricingModelName, aggregate)]
     }
 
-    const totals = telemetryUsage.reduce(
-      (sum, usage) => ({
-        inputTokens: sum.inputTokens + usage.inputTokens,
-        outputTokens: sum.outputTokens + usage.outputTokens,
-        reasoningTokens: sum.reasoningTokens + usage.reasoningTokens,
-        cacheReadTokens: sum.cacheReadTokens + usage.cacheReadTokens,
-        cacheWriteTokens: sum.cacheWriteTokens + usage.cacheWriteTokens,
-      }),
-      { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }
-    )
-
-    const delta = {
-      inputTokens: Math.max(0, aggregate.inputTokens - totals.inputTokens),
-      outputTokens: Math.max(0, aggregate.outputTokens - totals.outputTokens),
-      reasoningTokens: Math.max(0, aggregate.reasoningTokens - totals.reasoningTokens),
-      cacheReadTokens: Math.max(0, aggregate.cacheReadTokens - totals.cacheReadTokens),
-      cacheWriteTokens: Math.max(0, aggregate.cacheWriteTokens - totals.cacheWriteTokens),
-    }
-
-    const deltaTotal =
-      delta.inputTokens + delta.outputTokens + delta.reasoningTokens + delta.cacheReadTokens + delta.cacheWriteTokens
-
-    if (deltaTotal === 0) return telemetryUsage
+    const delta = positiveTokenDelta(aggregate, sumTokenBuckets(telemetryUsage))
+    if (!hasTokenActivity(delta)) return telemetryUsage
 
     return [...telemetryUsage, this.buildFallbackUsage(fallbackPricingModelName, delta)]
   }
 
-  private buildFallbackUsage(
-    fallbackPricingModelName: string,
-    usage: {
-      inputTokens: number
-      outputTokens: number
-      reasoningTokens: number
-      cacheReadTokens: number
-      cacheWriteTokens: number
-    }
-  ) {
+  private buildFallbackUsage(fallbackPricingModelName: string, usage: TokenBuckets) {
     return {
       modelName: fallbackPricingModelName,
       ...usage,
@@ -314,51 +228,6 @@ export class SubagentAnalyzer {
       callsWithCacheRead: usage.cacheReadTokens > 0 ? 1 : 0,
       callsWithCacheWrite: usage.cacheWriteTokens > 0 ? 1 : 0,
     }
-  }
-
-  private totalTokens(usage: {
-    inputTokens?: number
-    outputTokens?: number
-    reasoningTokens?: number
-    cacheReadTokens?: number
-    cacheWriteTokens?: number
-  }): number {
-    return (
-      (usage.inputTokens ?? 0) +
-      (usage.outputTokens ?? 0) +
-      (usage.reasoningTokens ?? 0) +
-      (usage.cacheReadTokens ?? 0) +
-      (usage.cacheWriteTokens ?? 0)
-    )
-  }
-
-  private hasInconsistentAggregateBuckets(
-    aggregate: {
-      inputTokens?: number
-      outputTokens?: number
-      reasoningTokens?: number
-      cacheReadTokens?: number
-      cacheWriteTokens?: number
-    },
-    telemetry: {
-      inputTokens: number
-      outputTokens: number
-      reasoningTokens: number
-      cacheReadTokens: number
-      cacheWriteTokens: number
-    }
-  ): boolean {
-    return (
-      (aggregate.inputTokens !== undefined && aggregate.inputTokens < telemetry.inputTokens) ||
-      (aggregate.outputTokens !== undefined && aggregate.outputTokens < telemetry.outputTokens) ||
-      (aggregate.reasoningTokens !== undefined && aggregate.reasoningTokens < telemetry.reasoningTokens) ||
-      (aggregate.cacheReadTokens !== undefined && aggregate.cacheReadTokens < telemetry.cacheReadTokens) ||
-      (aggregate.cacheWriteTokens !== undefined && aggregate.cacheWriteTokens < telemetry.cacheWriteTokens)
-    )
-  }
-
-  private safeNumber(value: unknown): number | undefined {
-    return typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : undefined
   }
 
   private normalizeString(value: unknown): string | undefined {

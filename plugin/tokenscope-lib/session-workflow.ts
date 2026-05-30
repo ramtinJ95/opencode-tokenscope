@@ -3,15 +3,15 @@ import { CostCalculator } from "./cost.js"
 import { SubagentAnalyzer } from "./subagent.js"
 import { ContextAnalyzer } from "./context.js"
 import { SkillAnalyzer } from "./skill.js"
+import {
+  completeTokenBuckets,
+  hasLowerAggregateBucket,
+  hasTokenActivity,
+  readTokenBuckets,
+  safeTokenNumber,
+  totalTokenBuckets,
+} from "./usage-buckets.js"
 import { WarningCollector } from "./warnings.js"
-
-type TokenBuckets = {
-  inputTokens?: number
-  outputTokens?: number
-  reasoningTokens?: number
-  cacheReadTokens?: number
-  cacheWriteTokens?: number
-}
 
 function normalizeSessionID(sessionID?: string): string | undefined {
   const normalized = sessionID?.trim()
@@ -62,46 +62,8 @@ export function addPerModelPricingWarnings(
   }
 }
 
-function safeNumber(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : undefined
-}
-
 function emptyCategory(label: string) {
   return { label, totalTokens: 0, entries: [], allEntries: [] }
-}
-
-function readTokenBuckets(tokens: SessionInfo["tokens"]): TokenBuckets | null {
-  if (!tokens) return null
-
-  const buckets = {
-    inputTokens: safeNumber(tokens.input),
-    outputTokens: safeNumber(tokens.output),
-    reasoningTokens: safeNumber(tokens.reasoning),
-    cacheReadTokens: safeNumber(tokens.cache?.read),
-    cacheWriteTokens: safeNumber(tokens.cache?.write),
-  }
-
-  return Object.values(buckets).some((value) => value !== undefined) ? buckets : null
-}
-
-function totalTokens(buckets: TokenBuckets): number {
-  return (
-    (buckets.inputTokens ?? 0) +
-    (buckets.outputTokens ?? 0) +
-    (buckets.reasoningTokens ?? 0) +
-    (buckets.cacheReadTokens ?? 0) +
-    (buckets.cacheWriteTokens ?? 0)
-  )
-}
-
-function hasInconsistentAggregateBuckets(aggregate: TokenBuckets, telemetry: Required<TokenBuckets>): boolean {
-  return (
-    (aggregate.inputTokens !== undefined && aggregate.inputTokens < telemetry.inputTokens) ||
-    (aggregate.outputTokens !== undefined && aggregate.outputTokens < telemetry.outputTokens) ||
-    (aggregate.reasoningTokens !== undefined && aggregate.reasoningTokens < telemetry.reasoningTokens) ||
-    (aggregate.cacheReadTokens !== undefined && aggregate.cacheReadTokens < telemetry.cacheReadTokens) ||
-    (aggregate.cacheWriteTokens !== undefined && aggregate.cacheWriteTokens < telemetry.cacheWriteTokens)
-  )
 }
 
 function sessionProviderID(sessionInfo: SessionInfo | undefined): string | undefined {
@@ -114,7 +76,7 @@ function sessionModelID(sessionInfo: SessionInfo | undefined): string | undefine
 
 export function hasSessionInfoAggregateActivity(sessionInfo: SessionInfo | undefined): boolean {
   const buckets = readTokenBuckets(sessionInfo?.tokens)
-  return totalTokens(buckets ?? {}) > 0 || (safeNumber(sessionInfo?.cost) ?? 0) > 0
+  return hasTokenActivity(buckets) || (safeTokenNumber(sessionInfo?.cost) ?? 0) > 0
 }
 
 export function buildAggregateOnlyAnalysis(input: {
@@ -123,16 +85,12 @@ export function buildAggregateOnlyAnalysis(input: {
   tokenModel: TokenModel
   pricingModelName: string
 }): TokenAnalysis {
-  const buckets = readTokenBuckets(input.sessionInfo.tokens) ?? {}
-  const inputTokens = buckets.inputTokens ?? 0
-  const outputTokens = buckets.outputTokens ?? 0
-  const reasoningTokens = buckets.reasoningTokens ?? 0
-  const cacheReadTokens = buckets.cacheReadTokens ?? 0
-  const cacheWriteTokens = buckets.cacheWriteTokens ?? 0
+  const buckets = completeTokenBuckets(readTokenBuckets(input.sessionInfo.tokens))
+  const { inputTokens, outputTokens, reasoningTokens, cacheReadTokens, cacheWriteTokens } = buckets
   const providerID = sessionProviderID(input.sessionInfo)
   const modelID = sessionModelID(input.sessionInfo)
-  const sessionCost = safeNumber(input.sessionInfo.cost) ?? 0
-  const hasTokens = totalTokens({ inputTokens, outputTokens, reasoningTokens, cacheReadTokens, cacheWriteTokens }) > 0
+  const sessionCost = safeTokenNumber(input.sessionInfo.cost) ?? 0
+  const hasTokens = hasTokenActivity(buckets)
 
   return {
     sessionID: input.sessionID,
@@ -197,9 +155,9 @@ export function applySessionInfoTotals(analysis: TokenAnalysis, sessionInfo: Ses
     cacheReadTokens: analysis.cacheReadTokens,
     cacheWriteTokens: analysis.cacheWriteTokens,
   }
-  const aggregateTokenActivity = totalTokens(tokens ?? {})
-  const telemetryTokenActivity = totalTokens(telemetryTokens)
-  const aggregateIsConsistent = !tokens || !hasInconsistentAggregateBuckets(tokens, telemetryTokens)
+  const aggregateTokenActivity = totalTokenBuckets(tokens ?? {})
+  const telemetryTokenActivity = totalTokenBuckets(telemetryTokens)
+  const aggregateIsConsistent = !tokens || !hasLowerAggregateBucket(tokens, telemetryTokens)
   const shouldApplyTokens = Boolean(tokens && aggregateIsConsistent && (aggregateTokenActivity > 0 || telemetryTokenActivity === 0))
 
   if (tokens && shouldApplyTokens) {
@@ -210,8 +168,8 @@ export function applySessionInfoTotals(analysis: TokenAnalysis, sessionInfo: Ses
     analysis.cacheWriteTokens = tokens.cacheWriteTokens ?? analysis.cacheWriteTokens
   }
 
-  const cost = safeNumber(sessionInfo.cost)
-  const telemetryCost = safeNumber(analysis.sessionCost) ?? 0
+  const cost = safeTokenNumber(sessionInfo.cost)
+  const telemetryCost = safeTokenNumber(analysis.sessionCost) ?? 0
   const costIsConsistent = telemetryCost === 0 || cost === undefined || cost >= telemetryCost
   if (cost !== undefined && costIsConsistent && (cost > 0 || shouldApplyTokens || telemetryTokenActivity === 0)) {
     analysis.sessionCost = cost
