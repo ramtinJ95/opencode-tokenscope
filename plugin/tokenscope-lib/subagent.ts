@@ -110,7 +110,14 @@ export class SubagentAnalyzer {
       const totalTokens =
         finalInputTokens + finalOutputTokens + finalReasoningTokens + finalCacheReadTokens + finalCacheWriteTokens
       const fallbackPricingModelName = this.costCalculator.buildLookupKey(providerID, modelName) || modelName
-      const estimatedCost = telemetry.perModelUsage.reduce((sum, modelUsage) => {
+      const costUsage = this.buildCostUsage(telemetry.perModelUsage, fallbackPricingModelName, {
+        inputTokens: finalInputTokens,
+        outputTokens: finalOutputTokens,
+        reasoningTokens: finalReasoningTokens,
+        cacheReadTokens: finalCacheReadTokens,
+        cacheWriteTokens: finalCacheWriteTokens,
+      })
+      const estimatedCost = costUsage.reduce((sum, modelUsage) => {
         const pricingModelName = this.costCalculator.resolvePricingModelName(modelUsage, fallbackPricingModelName)
         if (!this.costCalculator.hasPricing(pricingModelName)) {
           this.warnings?.add(
@@ -153,11 +160,11 @@ export class SubagentAnalyzer {
   }
 
   private readSessionTokens(tokens: TokenUsage | undefined): {
-    inputTokens: number
-    outputTokens: number
-    reasoningTokens: number
-    cacheReadTokens: number
-    cacheWriteTokens: number
+    inputTokens?: number
+    outputTokens?: number
+    reasoningTokens?: number
+    cacheReadTokens?: number
+    cacheWriteTokens?: number
   } | null {
     if (!tokens) return null
 
@@ -178,11 +185,94 @@ export class SubagentAnalyzer {
     }
 
     return {
-      inputTokens: inputTokens ?? 0,
-      outputTokens: outputTokens ?? 0,
-      reasoningTokens: reasoningTokens ?? 0,
-      cacheReadTokens: cacheReadTokens ?? 0,
-      cacheWriteTokens: cacheWriteTokens ?? 0,
+      inputTokens,
+      outputTokens,
+      reasoningTokens,
+      cacheReadTokens,
+      cacheWriteTokens,
+    }
+  }
+
+  private buildCostUsage(
+    telemetryUsage: Array<{
+      modelName: string
+      providerID?: string
+      modelID?: string
+      inputTokens: number
+      outputTokens: number
+      reasoningTokens: number
+      cacheReadTokens: number
+      cacheWriteTokens: number
+      apiCost: number
+      apiCallCount: number
+      callsWithCacheRead: number
+      callsWithCacheWrite: number
+      calls?: Array<{
+        inputTokens: number
+        outputTokens: number
+        reasoningTokens: number
+        cacheReadTokens: number
+        cacheWriteTokens: number
+      }>
+    }>,
+    fallbackPricingModelName: string,
+    aggregate: {
+      inputTokens: number
+      outputTokens: number
+      reasoningTokens: number
+      cacheReadTokens: number
+      cacheWriteTokens: number
+    }
+  ) {
+    if (telemetryUsage.length === 0) {
+      return [this.buildFallbackUsage(fallbackPricingModelName, aggregate)]
+    }
+
+    const totals = telemetryUsage.reduce(
+      (sum, usage) => ({
+        inputTokens: sum.inputTokens + usage.inputTokens,
+        outputTokens: sum.outputTokens + usage.outputTokens,
+        reasoningTokens: sum.reasoningTokens + usage.reasoningTokens,
+        cacheReadTokens: sum.cacheReadTokens + usage.cacheReadTokens,
+        cacheWriteTokens: sum.cacheWriteTokens + usage.cacheWriteTokens,
+      }),
+      { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }
+    )
+
+    const delta = {
+      inputTokens: Math.max(0, aggregate.inputTokens - totals.inputTokens),
+      outputTokens: Math.max(0, aggregate.outputTokens - totals.outputTokens),
+      reasoningTokens: Math.max(0, aggregate.reasoningTokens - totals.reasoningTokens),
+      cacheReadTokens: Math.max(0, aggregate.cacheReadTokens - totals.cacheReadTokens),
+      cacheWriteTokens: Math.max(0, aggregate.cacheWriteTokens - totals.cacheWriteTokens),
+    }
+
+    const deltaTotal =
+      delta.inputTokens + delta.outputTokens + delta.reasoningTokens + delta.cacheReadTokens + delta.cacheWriteTokens
+
+    if (deltaTotal === 0) return telemetryUsage
+
+    return [...telemetryUsage, this.buildFallbackUsage(fallbackPricingModelName, delta)]
+  }
+
+  private buildFallbackUsage(
+    fallbackPricingModelName: string,
+    usage: {
+      inputTokens: number
+      outputTokens: number
+      reasoningTokens: number
+      cacheReadTokens: number
+      cacheWriteTokens: number
+    }
+  ) {
+    return {
+      modelName: fallbackPricingModelName,
+      ...usage,
+      apiCost: 0,
+      apiCallCount: 0,
+      callsWithCacheRead: usage.cacheReadTokens > 0 ? 1 : 0,
+      callsWithCacheWrite: usage.cacheWriteTokens > 0 ? 1 : 0,
+      calls: [usage],
     }
   }
 

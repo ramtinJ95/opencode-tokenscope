@@ -197,6 +197,7 @@ export interface ModelCostEstimate extends ModelTokenUsage {
   hasPricing: boolean
   usesTieredPricing: boolean
   estimatedSessionCost: number
+  estimatedUncachedInputCost: number
   estimatedInputCost: number
   estimatedOutputCost: number
   estimatedCacheReadCost: number
@@ -379,6 +380,7 @@ export interface ModelPricing {
   output: number
   cacheWrite: number
   cacheRead: number
+  cache?: ModelPricingCacheRates
   cache_write?: number
   cache_read?: number
   tiers?: ModelPricingTier[]
@@ -396,6 +398,7 @@ export interface ModelPricingTier extends ModelPricingRatesSnake {
 export interface ModelPricingRates {
   input: number
   output: number
+  cache?: ModelPricingCacheRates
   cacheWrite?: number
   cacheRead?: number
 }
@@ -403,8 +406,14 @@ export interface ModelPricingRates {
 export interface ModelPricingRatesSnake {
   input: number
   output: number
+  cache?: ModelPricingCacheRates
   cache_write?: number
   cache_read?: number
+}
+
+export interface ModelPricingCacheRates {
+  read?: number
+  write?: number
 }
 
 export interface ChildSession extends SessionInfo {

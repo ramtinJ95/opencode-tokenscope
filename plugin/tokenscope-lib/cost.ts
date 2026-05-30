@@ -17,6 +17,7 @@ type PricingRates = {
 }
 
 type CostComponents = {
+  uncachedInput: number
   input: number
   output: number
   cacheRead: number
@@ -37,12 +38,11 @@ export class CostCalculator {
     const pricing = this.getPricing(fallbackPricingModelName)
     const defaultRates = this.selectPricingRates(pricing, analysis.inputTokens + analysis.cacheReadTokens + analysis.cacheWriteTokens)
     const hasActivity =
-      analysis.apiCallCount > 0 &&
-      (analysis.inputTokens > 0 ||
-        analysis.outputTokens > 0 ||
-        analysis.reasoningTokens > 0 ||
-        analysis.cacheReadTokens > 0 ||
-        analysis.cacheWriteTokens > 0)
+      analysis.inputTokens > 0 ||
+      analysis.outputTokens > 0 ||
+      analysis.reasoningTokens > 0 ||
+      analysis.cacheReadTokens > 0 ||
+      analysis.cacheWriteTokens > 0
     const isSubscription = hasActivity && analysis.sessionCost === 0
 
     const estimatedInputCost = perModelCosts.reduce((sum, model) => sum + model.estimatedInputCost, 0)
@@ -75,7 +75,7 @@ export class CostCalculator {
   }
 
   private calculatePerModelCosts(analysis: TokenAnalysis, fallbackPricingModelName: string): ModelCostEstimate[] {
-    const usage = analysis.perModelUsage.length > 0 ? analysis.perModelUsage : [this.buildFallbackUsage(analysis)]
+    const usage = this.buildEstimateUsage(analysis, fallbackPricingModelName)
 
     return usage.map((modelUsage) => {
       const pricingModelName = this.resolvePricingModelName(modelUsage, fallbackPricingModelName)
@@ -87,6 +87,7 @@ export class CostCalculator {
         hasPricing: this.hasPricing(pricingModelName),
         usesTieredPricing: components.usesTieredPricing,
         estimatedSessionCost: components.total,
+        estimatedUncachedInputCost: components.uncachedInput,
         estimatedInputCost: components.input,
         estimatedOutputCost: components.output,
         estimatedCacheReadCost: components.cacheRead,
@@ -99,6 +100,34 @@ export class CostCalculator {
     })
   }
 
+  private buildEstimateUsage(analysis: TokenAnalysis, fallbackPricingModelName: string): ModelTokenUsage[] {
+    if (analysis.perModelUsage.length === 0) return [this.buildFallbackUsage(analysis)]
+
+    const totals = this.sumUsage(analysis.perModelUsage)
+    const delta = {
+      inputTokens: this.positiveDelta(analysis.inputTokens, totals.inputTokens),
+      outputTokens: this.positiveDelta(analysis.outputTokens, totals.outputTokens),
+      reasoningTokens: this.positiveDelta(analysis.reasoningTokens, totals.reasoningTokens),
+      cacheReadTokens: this.positiveDelta(analysis.cacheReadTokens, totals.cacheReadTokens),
+      cacheWriteTokens: this.positiveDelta(analysis.cacheWriteTokens, totals.cacheWriteTokens),
+    }
+
+    if (this.totalTokens(delta) === 0) return analysis.perModelUsage
+
+    return [
+      ...analysis.perModelUsage,
+      {
+        modelName: fallbackPricingModelName,
+        ...delta,
+        apiCost: 0,
+        apiCallCount: 0,
+        callsWithCacheRead: delta.cacheReadTokens > 0 ? 1 : 0,
+        callsWithCacheWrite: delta.cacheWriteTokens > 0 ? 1 : 0,
+        calls: [delta],
+      },
+    ]
+  }
+
   calculateModelUsageCost(modelUsage: ModelTokenUsage, fallbackPricingModelName: string): number {
     const pricingModelName = this.resolvePricingModelName(modelUsage, fallbackPricingModelName)
     return this.calculateModelUsageComponents(modelUsage, pricingModelName).total
@@ -108,6 +137,7 @@ export class CostCalculator {
     const pricing = this.getPricing(pricingModelName)
     const calls = modelUsage.calls?.length ? modelUsage.calls : [this.asUsageCall(modelUsage)]
     let input = 0
+    let uncachedInput = 0
     let output = 0
     let cacheRead = 0
     let cacheWrite = 0
@@ -117,6 +147,7 @@ export class CostCalculator {
     for (const call of calls) {
       const rawContextTokens = this.rawContextTokens(call)
       const rates = this.selectPricingRates(pricing, rawContextTokens)
+      uncachedInput += (rawContextTokens / 1_000_000) * rates.input
       input += (call.inputTokens / 1_000_000) * rates.input
       output += ((call.outputTokens + call.reasoningTokens) / 1_000_000) * rates.output
       cacheRead += (call.cacheReadTokens / 1_000_000) * rates.cacheRead
@@ -126,6 +157,7 @@ export class CostCalculator {
     }
 
     return {
+      uncachedInput: this.safeCost(uncachedInput),
       input: this.safeCost(input),
       output: this.safeCost(output),
       cacheRead: this.safeCost(cacheRead),
@@ -148,6 +180,27 @@ export class CostCalculator {
 
   private rawContextTokens(usage: ModelTokenUsageCall): number {
     return usage.inputTokens + usage.cacheReadTokens + usage.cacheWriteTokens
+  }
+
+  private sumUsage(usages: ModelTokenUsage[]): ModelTokenUsageCall {
+    return usages.reduce(
+      (sum, usage) => ({
+        inputTokens: sum.inputTokens + usage.inputTokens,
+        outputTokens: sum.outputTokens + usage.outputTokens,
+        reasoningTokens: sum.reasoningTokens + usage.reasoningTokens,
+        cacheReadTokens: sum.cacheReadTokens + usage.cacheReadTokens,
+        cacheWriteTokens: sum.cacheWriteTokens + usage.cacheWriteTokens,
+      }),
+      { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }
+    )
+  }
+
+  private positiveDelta(total: number, subtotal: number): number {
+    return Math.max(0, total - subtotal)
+  }
+
+  private totalTokens(usage: ModelTokenUsageCall): number {
+    return usage.inputTokens + usage.outputTokens + usage.reasoningTokens + usage.cacheReadTokens + usage.cacheWriteTokens
   }
 
   resolvePricingModelName(modelUsage: ModelTokenUsage, fallbackPricingModelName: string): string {
@@ -237,13 +290,11 @@ export class CostCalculator {
       ?.filter((item) => item.tier.type === "context" && rawContextTokens > item.tier.size)
       .sort((a, b) => b.tier.size - a.tier.size)[0]
 
-    if (contextTier) return this.ratesFromSnake(contextTier)
+    if (contextTier) return this.ratesFromAny(contextTier)
 
     const over200k = pricing.experimentalOver200K ?? pricing.context_over_200k
     if (over200k && rawContextTokens > 200_000) {
-      return "cacheRead" in over200k || "cacheWrite" in over200k
-        ? this.ratesFromCamel(over200k)
-        : this.ratesFromSnake(over200k)
+      return this.ratesFromAny(over200k)
     }
 
     return this.baseRates(pricing)
@@ -259,26 +310,25 @@ export class CostCalculator {
     return {
       input: this.safeRate(pricing.input),
       output: this.safeRate(pricing.output),
-      cacheRead: this.safeRate(pricing.cacheRead ?? pricing.cache_read),
-      cacheWrite: this.safeRate(pricing.cacheWrite ?? pricing.cache_write),
+      cacheRead: this.safeRate(pricing.cacheRead ?? pricing.cache_read ?? pricing.cache?.read),
+      cacheWrite: this.safeRate(pricing.cacheWrite ?? pricing.cache_write ?? pricing.cache?.write),
     }
   }
 
-  private ratesFromSnake(pricing: { input: number; output: number; cache_read?: number; cache_write?: number }): PricingRates {
+  private ratesFromAny(pricing: {
+    input: number
+    output: number
+    cache?: { read?: number; write?: number }
+    cache_read?: number
+    cache_write?: number
+    cacheRead?: number
+    cacheWrite?: number
+  }): PricingRates {
     return {
       input: this.safeRate(pricing.input),
       output: this.safeRate(pricing.output),
-      cacheRead: this.safeRate(pricing.cache_read),
-      cacheWrite: this.safeRate(pricing.cache_write),
-    }
-  }
-
-  private ratesFromCamel(pricing: { input: number; output: number; cacheRead?: number; cacheWrite?: number }): PricingRates {
-    return {
-      input: this.safeRate(pricing.input),
-      output: this.safeRate(pricing.output),
-      cacheRead: this.safeRate(pricing.cacheRead),
-      cacheWrite: this.safeRate(pricing.cacheWrite),
+      cacheRead: this.safeRate(pricing.cacheRead ?? pricing.cache_read ?? pricing.cache?.read),
+      cacheWrite: this.safeRate(pricing.cacheWrite ?? pricing.cache_write ?? pricing.cache?.write),
     }
   }
 
