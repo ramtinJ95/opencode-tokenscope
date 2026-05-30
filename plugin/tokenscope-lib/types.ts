@@ -203,6 +203,7 @@ export interface ModelCostEstimate extends ModelTokenUsage {
   pricingModelName: string
   hasPricing: boolean
   usesTieredPricing: boolean
+  hasVariablePricingRates: boolean
   estimatedSessionCost: number
   estimatedUncachedInputCost: number
   estimatedInputCost: number

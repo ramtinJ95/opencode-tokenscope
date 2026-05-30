@@ -93,9 +93,19 @@ export class SubagentAnalyzer {
       const sessionTokens = this.readSessionTokens(child.tokens)
       const sessionTokensHaveActivity = sessionTokens ? this.totalTokens(sessionTokens) > 0 : false
       const telemetryHasActivity = this.totalTokens(telemetryTokens) > 0 || telemetry.sessionCost > 0
-      const effectiveSessionTokens = sessionTokens && (sessionTokensHaveActivity || !telemetryHasActivity) ? sessionTokens : null
+      const sessionTokensAreConsistent = sessionTokens
+        ? !this.hasInconsistentAggregateBuckets(sessionTokens, telemetryTokens)
+        : true
+      const effectiveSessionTokens =
+        sessionTokens && sessionTokensAreConsistent && (sessionTokensHaveActivity || !telemetryHasActivity)
+          ? sessionTokens
+          : null
       const childCost = this.safeNumber(child.cost)
-      const apiCost = childCost !== undefined && (childCost > 0 || !telemetryHasActivity) ? childCost : telemetry.sessionCost
+      const childCostIsConsistent = childCost === undefined || telemetry.sessionCost === 0 || childCost >= telemetry.sessionCost
+      const apiCost =
+        childCost !== undefined && childCostIsConsistent && (childCost > 0 || !telemetryHasActivity)
+          ? childCost
+          : telemetry.sessionCost
 
       const assistantMessageCount = telemetry.assistantMessageCount
       const apiCallCount = telemetry.apiCallCount
@@ -319,6 +329,31 @@ export class SubagentAnalyzer {
       (usage.reasoningTokens ?? 0) +
       (usage.cacheReadTokens ?? 0) +
       (usage.cacheWriteTokens ?? 0)
+    )
+  }
+
+  private hasInconsistentAggregateBuckets(
+    aggregate: {
+      inputTokens?: number
+      outputTokens?: number
+      reasoningTokens?: number
+      cacheReadTokens?: number
+      cacheWriteTokens?: number
+    },
+    telemetry: {
+      inputTokens: number
+      outputTokens: number
+      reasoningTokens: number
+      cacheReadTokens: number
+      cacheWriteTokens: number
+    }
+  ): boolean {
+    return (
+      (aggregate.inputTokens !== undefined && aggregate.inputTokens < telemetry.inputTokens) ||
+      (aggregate.outputTokens !== undefined && aggregate.outputTokens < telemetry.outputTokens) ||
+      (aggregate.reasoningTokens !== undefined && aggregate.reasoningTokens < telemetry.reasoningTokens) ||
+      (aggregate.cacheReadTokens !== undefined && aggregate.cacheReadTokens < telemetry.cacheReadTokens) ||
+      (aggregate.cacheWriteTokens !== undefined && aggregate.cacheWriteTokens < telemetry.cacheWriteTokens)
     )
   }
 

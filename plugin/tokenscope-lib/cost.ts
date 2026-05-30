@@ -25,6 +25,7 @@ type CostComponents = {
   total: number
   rates: PricingRates
   usesTieredPricing: boolean
+  hasVariablePricingRates: boolean
 }
 
 const DEFAULT_PRICING: ModelPricing = { input: 1, output: 3, cacheWrite: 0, cacheRead: 0 }
@@ -94,6 +95,7 @@ export class CostCalculator {
         pricingModelName,
         hasPricing: this.hasPricing(pricingModelName),
         usesTieredPricing: components.usesTieredPricing,
+        hasVariablePricingRates: components.hasVariablePricingRates,
         estimatedSessionCost: components.total,
         estimatedUncachedInputCost: components.uncachedInput,
         estimatedInputCost: components.input,
@@ -150,9 +152,11 @@ export class CostCalculator {
     let cacheRead = 0
     let cacheWrite = 0
     let usesTieredPricing = false
+    let hasVariablePricingRates = false
     let displayRates = hasKnownPerCallContext
       ? this.selectPricingRates(pricing, this.rawContextTokens(this.asUsageCall(modelUsage)))
       : this.baseRates(pricing)
+    let previousRates: PricingRates | undefined
 
     for (const call of calls) {
       const rawContextTokens = this.rawContextTokens(call)
@@ -163,6 +167,8 @@ export class CostCalculator {
       cacheRead += (call.cacheReadTokens / 1_000_000) * rates.cacheRead
       cacheWrite += (call.cacheWriteTokens / 1_000_000) * rates.cacheWrite
       usesTieredPricing ||= hasKnownPerCallContext && this.usesNonBasePricing(pricing, rawContextTokens)
+      hasVariablePricingRates ||= previousRates !== undefined && !this.sameRates(previousRates, rates)
+      previousRates = rates
       displayRates = rates
     }
 
@@ -175,6 +181,7 @@ export class CostCalculator {
       total: this.safeCost(input + output + cacheRead + cacheWrite),
       rates: displayRates,
       usesTieredPricing,
+      hasVariablePricingRates,
     }
   }
 
@@ -314,6 +321,10 @@ export class CostCalculator {
     const hasContextTier = pricing.tiers?.some((item) => item.tier.type === "context" && rawContextTokens > item.tier.size)
     const hasOver200k = Boolean((pricing.experimentalOver200K ?? pricing.context_over_200k) && rawContextTokens > 200_000)
     return Boolean(hasContextTier || (!hasContextTier && hasOver200k))
+  }
+
+  private sameRates(a: PricingRates, b: PricingRates): boolean {
+    return a.input === b.input && a.output === b.output && a.cacheRead === b.cacheRead && a.cacheWrite === b.cacheWrite
   }
 
   private baseRates(pricing: ModelPricing): PricingRates {

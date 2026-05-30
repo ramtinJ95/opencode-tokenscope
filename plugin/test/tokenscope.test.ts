@@ -10,6 +10,8 @@ const REPORT_FILENAME = "token-usage-output.txt"
 type RunOptions = {
   argSessionID?: string
   contextSessionID?: string
+  includeSubagents?: boolean
+  sessionInfo?: Record<string, unknown>
 }
 
 async function withTempCwd<T>(run: (directory: string) => Promise<T>): Promise<T> {
@@ -31,10 +33,14 @@ async function runTokenscope(options: RunOptions = {}) {
     const plugin = await TokenAnalyzerPlugin({
       client: {
         session: {
+          get: options.sessionInfo
+            ? async () => options.sessionInfo
+            : undefined,
           messages: async ({ path }: { path: Record<string, string> }) => {
             calls.push(path)
             return []
           },
+          children: async () => [],
         },
       },
       serverUrl: "http://localhost",
@@ -45,7 +51,7 @@ async function runTokenscope(options: RunOptions = {}) {
       {
         sessionID: options.argSessionID,
         limitMessages: 10,
-        includeSubagents: true,
+        includeSubagents: options.includeSubagents ?? true,
       },
       {
         sessionID: options.contextSessionID ?? "ses_current",
@@ -89,4 +95,23 @@ test.serial("prefers an explicit non-empty sessionID over the current session", 
   expect(calls).toEqual([{ id: "ses_explicit" }])
   expect(summary).toContain("Session ses_explicit has no messages yet.")
   expect(report).toContain("Token Analysis: Session ses_explicit")
+})
+
+test.serial("reports persisted aggregate totals when session messages are empty", async () => {
+  const { summary, report } = await runTokenscope({
+    includeSubagents: false,
+    sessionInfo: {
+      id: "ses_current",
+      providerID: "openai",
+      modelID: "gpt-5.4-mini",
+      tokens: { input: 1_000, output: 500, reasoning: 25, cache: { read: 200, write: 100 } },
+      cost: 0.0123,
+    },
+  })
+
+  expect(summary).toContain("Token analysis complete!")
+  expect(summary).toContain("Session telemetry total: 1,825")
+  expect(report).toContain("Token Analysis: Session ses_current")
+  expect(report).toContain("Input tokens:           1,000")
+  expect(report).toContain("ACTUAL COST (from API):  $0.0123")
 })

@@ -21,6 +21,8 @@ import {
   addPerModelPricingWarnings,
   applySessionInfoTotals,
   attachConfiguredAnalyses,
+  buildAggregateOnlyAnalysis,
+  hasSessionInfoAggregateActivity,
   resolveSessionID,
 } from "./tokenscope-lib/session-workflow.js"
 
@@ -80,13 +82,74 @@ export const TokenAnalyzerPlugin: Plugin = async ({ client, serverUrl, directory
               : undefined
             const messages: SessionMessage[] = unwrapResponseData<SessionMessage[]>(response ?? [])
 
-            if (!Array.isArray(messages) || messages.length === 0) {
+            if (!Array.isArray(messages)) {
               const output = buildFailureReport(sessionID, warnings.list(), `Session ${sessionID} has no messages yet.`)
               const writeError = await writeReport(outputPath, output)
               if (writeError) {
                 return `Session ${sessionID} has no messages yet, and TokenScope also failed to write ${outputPath}. ${writeError}`
               }
               return `Session ${sessionID} has no messages yet. A short report was saved to: ${outputPath}`
+            }
+
+            if (messages.length === 0) {
+              if (!hasSessionInfoAggregateActivity(sessionInfo)) {
+                const output = buildFailureReport(sessionID, warnings.list(), `Session ${sessionID} has no messages yet.`)
+                const writeError = await writeReport(outputPath, output)
+                if (writeError) {
+                  return `Session ${sessionID} has no messages yet, and TokenScope also failed to write ${outputPath}. ${writeError}`
+                }
+                return `Session ${sessionID} has no messages yet. A short report was saved to: ${outputPath}`
+              }
+
+              const modelProbeMessages: SessionMessage[] = sessionInfo
+                ? [
+                    {
+                      info: {
+                        id: sessionID,
+                        role: "assistant",
+                        providerID: sessionInfo.providerID ?? sessionInfo.model?.providerID,
+                        modelID: sessionInfo.modelID ?? sessionInfo.model?.modelID ?? sessionInfo.model?.id,
+                      },
+                      parts: [],
+                    },
+                  ]
+                : []
+              const { model: tokenModel, providerID, modelID } = modelResolver.resolveModelAndProvider(modelProbeMessages)
+              const pricingModelName = costCalculator.buildLookupKey(providerID, modelID) || tokenModel.name
+
+              warnings.add(
+                `Session ${sessionID} has no exported messages; TokenScope is using persisted OpenCode session token/cost aggregates only.`,
+                `aggregate-only:${sessionID}`
+              )
+              addModelSupportWarnings(warnings, costCalculator, tokenModel, providerID, modelID, pricingModelName)
+
+              const analysis = buildAggregateOnlyAnalysis({ sessionID, sessionInfo: sessionInfo!, tokenModel, pricingModelName })
+              addPerModelPricingWarnings(warnings, costCalculator, analysis, pricingModelName)
+              await attachConfiguredAnalyses({
+                analysis,
+                messages,
+                sessionID,
+                tokenModel,
+                providerID,
+                modelID,
+                pricingModelName,
+                includeSubagents: args.includeSubagents,
+                config,
+                costCalculator,
+                subagentAnalyzer,
+                contextAnalyzer,
+                skillAnalyzer,
+              })
+
+              analysis.warnings = warnings.list()
+
+              const output = formatter.format(analysis)
+              const writeError = await writeReport(outputPath, output)
+              if (writeError) {
+                return writeError
+              }
+
+              return buildSuccessSummary(outputPath, analysis)
             }
 
             const { model: tokenModel, providerID, modelID } = modelResolver.resolveModelAndProvider(messages)

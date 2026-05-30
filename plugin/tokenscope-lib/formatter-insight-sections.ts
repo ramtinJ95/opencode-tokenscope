@@ -144,6 +144,10 @@ export function formatCacheEfficiency(efficiency: CacheEfficiency, cost: CostEst
     lines.push(`  Cost Analysis (per-model pricing across ${cost.perModelCosts.length} models):`)
     lines.push(`    Without caching:   $${modelAwareEfficiency.costWithoutCaching.toFixed(4)}`)
     lines.push(`    With caching:      $${modelAwareEfficiency.costWithCaching.toFixed(4)}`)
+  } else if (cost.perModelCosts[0]?.hasVariablePricingRates) {
+    lines.push(`  Cost Analysis (${modelName}, variable per-call pricing):`)
+    lines.push(`    Without caching:   $${modelAwareEfficiency.costWithoutCaching.toFixed(4)}`)
+    lines.push(`    With caching:      $${modelAwareEfficiency.costWithCaching.toFixed(4)}`)
   } else {
     lines.push(
       `  Cost Analysis (${modelName} @ $${cost.pricePerMillionInput.toFixed(2)}/M input, $${cost.pricePerMillionCacheRead.toFixed(2)}/M cache read, $${cost.pricePerMillionCacheWrite.toFixed(2)}/M cache write):`
