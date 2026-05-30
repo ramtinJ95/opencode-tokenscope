@@ -55,6 +55,13 @@ export interface SessionInfo {
   id: string
   title?: string
   parentID?: string
+  providerID?: string
+  modelID?: string
+  model?: {
+    providerID?: string
+    modelID?: string
+    id?: string
+  }
   tokens?: TokenUsage
   cost?: number
 }

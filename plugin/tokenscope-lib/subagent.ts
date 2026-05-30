@@ -77,21 +77,11 @@ export class SubagentAnalyzer {
       const messagesResponse = await fetchSessionMessages(this.client, child.id)
       const messages: SessionMessage[] = unwrapResponseData<SessionMessage[]>(messagesResponse ?? [])
 
-      if (!Array.isArray(messages) || messages.length === 0) return null
+      if (!Array.isArray(messages)) return null
 
       const agentType = this.extractAgentType(child.title)
       const telemetry = summarizeTelemetry(messages)
-      let providerID = ""
-      let modelName = "unknown"
-
-      for (const message of messages) {
-        if (message.info.role !== "assistant") continue
-        const messageProviderID = message.info.providerID ?? message.info.model?.providerID
-        const messageModelID = message.info.modelID ?? message.info.model?.modelID ?? message.info.model?.id
-
-        if (messageProviderID) providerID = messageProviderID
-        if (messageModelID) modelName = messageModelID
-      }
+      const { providerID, modelName } = this.resolveChildModel(child, messages)
 
       const inputTokens = telemetry.inputTokens
       const outputTokens = telemetry.outputTokens
@@ -100,6 +90,8 @@ export class SubagentAnalyzer {
       const cacheWriteTokens = telemetry.cacheWriteTokens
       const sessionTokens = this.readSessionTokens(child.tokens)
       const apiCost = this.safeNumber(child.cost) ?? telemetry.sessionCost
+      if (messages.length === 0 && !sessionTokens && apiCost === 0) return null
+
       const assistantMessageCount = telemetry.assistantMessageCount
       const apiCallCount = telemetry.apiCallCount
       const finalInputTokens = sessionTokens?.inputTokens ?? inputTokens
@@ -157,6 +149,39 @@ export class SubagentAnalyzer {
     if (match) return match[1]
     const words = title.split(/\s+/)
     return words[0]?.toLowerCase() || "subagent"
+  }
+
+  private resolveChildModel(child: ChildSession, messages: SessionMessage[]): { providerID: string; modelName: string } {
+    let providerID = this.normalizeString(child.providerID ?? child.model?.providerID) ?? ""
+    let modelName = this.normalizeString(child.modelID ?? child.model?.modelID ?? child.model?.id) ?? "unknown"
+
+    for (const message of messages) {
+      if (message.info.role !== "assistant") continue
+      const messageProviderID = this.normalizeString(
+        message.info.providerID ??
+          message.info.model?.providerID ??
+          message.data?.providerID ??
+          message.data?.model?.providerID ??
+          message.providerID ??
+          message.model?.providerID
+      )
+      const messageModelID = this.normalizeString(
+        message.info.modelID ??
+          message.info.model?.modelID ??
+          message.info.model?.id ??
+          message.data?.modelID ??
+          message.data?.model?.modelID ??
+          message.data?.model?.id ??
+          message.modelID ??
+          message.model?.modelID ??
+          message.model?.id
+      )
+
+      if (messageProviderID) providerID = messageProviderID
+      if (messageModelID) modelName = messageModelID
+    }
+
+    return { providerID, modelName }
   }
 
   private readSessionTokens(tokens: TokenUsage | undefined): {
@@ -278,5 +303,9 @@ export class SubagentAnalyzer {
 
   private safeNumber(value: unknown): number | undefined {
     return typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : undefined
+  }
+
+  private normalizeString(value: unknown): string | undefined {
+    return typeof value === "string" && value.trim() ? value.trim() : undefined
   }
 }

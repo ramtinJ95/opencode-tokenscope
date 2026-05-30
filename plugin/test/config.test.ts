@@ -27,3 +27,12 @@ test("loads the bundled pricing catalog instead of the default fallback table", 
   expect(Object.keys(pricing).length).toBeGreaterThan(100)
   expect(pricing.default).toBeUndefined()
 })
+
+test("bundled pricing preserves context tier metadata", async () => {
+  const pricing = await loadModelPricing()
+  const tieredModels = Object.values(pricing).filter(
+    (model) => model.tiers?.length || model.context_over_200k || model.experimentalOver200K
+  )
+
+  expect(tieredModels.length).toBeGreaterThan(0)
+})

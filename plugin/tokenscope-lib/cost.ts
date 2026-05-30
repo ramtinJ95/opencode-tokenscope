@@ -310,8 +310,8 @@ export class CostCalculator {
     return {
       input: this.safeRate(pricing.input),
       output: this.safeRate(pricing.output),
-      cacheRead: this.safeRate(pricing.cacheRead ?? pricing.cache_read ?? pricing.cache?.read),
-      cacheWrite: this.safeRate(pricing.cacheWrite ?? pricing.cache_write ?? pricing.cache?.write),
+      cacheRead: this.safeRate(pricing.cache?.read ?? pricing.cacheRead ?? pricing.cache_read),
+      cacheWrite: this.safeRate(pricing.cache?.write ?? pricing.cacheWrite ?? pricing.cache_write),
     }
   }
 
@@ -327,8 +327,8 @@ export class CostCalculator {
     return {
       input: this.safeRate(pricing.input),
       output: this.safeRate(pricing.output),
-      cacheRead: this.safeRate(pricing.cacheRead ?? pricing.cache_read ?? pricing.cache?.read),
-      cacheWrite: this.safeRate(pricing.cacheWrite ?? pricing.cache_write ?? pricing.cache?.write),
+      cacheRead: this.safeRate(pricing.cache?.read ?? pricing.cacheRead ?? pricing.cache_read),
+      cacheWrite: this.safeRate(pricing.cache?.write ?? pricing.cacheWrite ?? pricing.cache_write),
     }
   }
 

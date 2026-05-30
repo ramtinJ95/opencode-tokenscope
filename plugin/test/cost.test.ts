@@ -359,6 +359,26 @@ test("applySessionInfoTotals prefers persisted OpenCode session aggregates", () 
   expect(analysis.sessionCost).toBe(0.1234)
 })
 
+test("applySessionInfoTotals ignores zero persisted aggregates when telemetry has activity", () => {
+  const analysis = baseAnalysis({
+    inputTokens: 100,
+    outputTokens: 200,
+    cacheReadTokens: 300,
+    sessionCost: 0.0123,
+  })
+
+  applySessionInfoTotals(analysis, {
+    id: "ses_test",
+    cost: 0,
+    tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+  })
+
+  expect(analysis.inputTokens).toBe(100)
+  expect(analysis.outputTokens).toBe(200)
+  expect(analysis.cacheReadTokens).toBe(300)
+  expect(analysis.sessionCost).toBe(0.0123)
+})
+
 test("calculateCost treats persisted aggregate tokens as subscription activity without telemetry calls", () => {
   const calculator = new CostCalculator({
     "openai/gpt-5.4-mini": { input: 1, output: 3, cacheWrite: 0, cacheRead: 0 },
@@ -437,6 +457,31 @@ test("calculateCost supports OpenCode nested cache pricing", () => {
   expect(cost.estimatedInputCost).toBeCloseTo(0.003)
   expect(cost.estimatedCacheReadCost).toBeCloseTo(0.00075)
   expect(cost.estimatedCacheWriteCost).toBeCloseTo(0.002)
+})
+
+test("calculateCost prefers nested cache pricing over zero compatibility fields", () => {
+  const calculator = new CostCalculator({
+    "provider/normalized": {
+      input: 1,
+      output: 1,
+      cacheRead: 0,
+      cacheWrite: 0,
+      cache: { read: 0.5, write: 1.5 },
+    },
+  })
+
+  const cost = calculator.calculateCost(
+    baseAnalysis({
+      pricingModelName: "provider/normalized",
+      inputTokens: 0,
+      cacheReadTokens: 1_000,
+      cacheWriteTokens: 1_000,
+      apiCallCount: 1,
+    })
+  )
+
+  expect(cost.estimatedCacheReadCost).toBeCloseTo(0.0005)
+  expect(cost.estimatedCacheWriteCost).toBeCloseTo(0.0015)
 })
 
 test("cache efficiency uses per-call tier pricing for uncached cost", () => {
@@ -536,5 +581,85 @@ test("SubagentAnalyzer preserves telemetry buckets missing from child aggregates
   expect(result.subagents[0]?.cacheReadTokens).toBe(7)
   expect(result.subagents[0]?.cacheWriteTokens).toBe(8)
   expect(result.totalEstimatedCost).toBeGreaterThan(0)
+})
+
+test("SubagentAnalyzer reports aggregate-only child sessions", async () => {
+  const calculator = new CostCalculator({
+    "openai/gpt-5.4-mini": { input: 1, output: 3, cacheWrite: 2, cacheRead: 0.5 },
+  })
+  const analyzer = new SubagentAnalyzer(
+    {
+      session: {
+        children: async ({ path }: { path: { id?: string; sessionID?: string } }) => {
+          const id = path.id ?? path.sessionID
+          if (id === "ses_parent") {
+            return [
+              {
+                id: "ses_child",
+                title: "worker subagent",
+                providerID: "openai",
+                modelID: "gpt-5.4-mini",
+                tokens: { input: 1_000, output: 500, reasoning: 0, cache: { read: 200, write: 100 } },
+                cost: 0,
+              },
+            ]
+          }
+          return []
+        },
+        messages: async () => [],
+      },
+    },
+    calculator
+  )
+
+  const result = await analyzer.analyzeChildSessions("ses_parent")
+
+  expect(result.subagents).toHaveLength(1)
+  expect(result.subagents[0]?.totalTokens).toBe(1_800)
+  expect(result.subagents[0]?.estimatedCost).toBeCloseTo(0.0028)
+})
+
+test("SubagentAnalyzer prices aggregate deltas from message data model metadata", async () => {
+  const calculator = new CostCalculator({
+    "openai/gpt-5.4-mini": { input: 1, output: 3, cacheWrite: 0, cacheRead: 0 },
+  })
+  const analyzer = new SubagentAnalyzer(
+    {
+      session: {
+        children: async ({ path }: { path: { id?: string; sessionID?: string } }) => {
+          const id = path.id ?? path.sessionID
+          if (id === "ses_parent") {
+            return [
+              {
+                id: "ses_child",
+                title: "worker subagent",
+                tokens: { input: 2_000, output: 1_000, reasoning: 0, cache: { read: 0, write: 0 } },
+                cost: 0,
+              },
+            ]
+          }
+          return []
+        },
+        messages: async () => [
+          {
+            info: { id: "msg_child", role: "assistant" },
+            data: { providerID: "openai", modelID: "gpt-5.4-mini" },
+            parts: [
+              {
+                type: "step-finish",
+                tokens: { input: 1_000, output: 500, reasoning: 0, cache: { read: 0, write: 0 } },
+                cost: 0,
+              },
+            ],
+          },
+        ],
+      },
+    },
+    calculator
+  )
+
+  const result = await analyzer.analyzeChildSessions("ses_parent")
+
+  expect(result.subagents[0]?.estimatedCost).toBeCloseTo(0.005)
 })
 

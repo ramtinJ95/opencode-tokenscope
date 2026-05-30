@@ -62,7 +62,22 @@ export function applySessionInfoTotals(analysis: TokenAnalysis, sessionInfo: Ses
   if (!sessionInfo) return
 
   const tokens = sessionInfo.tokens
-  if (tokens) {
+  const aggregateTokenActivity = tokens
+    ? (safeNumber(tokens.input) ?? 0) +
+      (safeNumber(tokens.output) ?? 0) +
+      (safeNumber(tokens.reasoning) ?? 0) +
+      (safeNumber(tokens.cache?.read) ?? 0) +
+      (safeNumber(tokens.cache?.write) ?? 0)
+    : 0
+  const telemetryTokenActivity =
+    analysis.inputTokens +
+    analysis.outputTokens +
+    analysis.reasoningTokens +
+    analysis.cacheReadTokens +
+    analysis.cacheWriteTokens
+  const shouldApplyTokens = Boolean(tokens && (aggregateTokenActivity > 0 || telemetryTokenActivity === 0))
+
+  if (tokens && shouldApplyTokens) {
     analysis.inputTokens = safeNumber(tokens.input) ?? analysis.inputTokens
     analysis.outputTokens = safeNumber(tokens.output) ?? analysis.outputTokens
     analysis.reasoningTokens = safeNumber(tokens.reasoning) ?? analysis.reasoningTokens
@@ -70,7 +85,10 @@ export function applySessionInfoTotals(analysis: TokenAnalysis, sessionInfo: Ses
     analysis.cacheWriteTokens = safeNumber(tokens.cache?.write) ?? analysis.cacheWriteTokens
   }
 
-  analysis.sessionCost = safeNumber(sessionInfo.cost) ?? analysis.sessionCost
+  const cost = safeNumber(sessionInfo.cost)
+  if (cost !== undefined && (cost > 0 || shouldApplyTokens || telemetryTokenActivity === 0)) {
+    analysis.sessionCost = cost
+  }
 }
 
 function applyContextAnalysis(analysis: TokenAnalysis, contextResult: ContextAnalysisResult): void {
