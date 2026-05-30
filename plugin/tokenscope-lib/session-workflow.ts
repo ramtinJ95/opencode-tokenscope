@@ -3,6 +3,8 @@ import { CostCalculator } from "./cost.js"
 import { SubagentAnalyzer } from "./subagent.js"
 import { ContextAnalyzer } from "./context.js"
 import { SkillAnalyzer } from "./skill.js"
+import { OutputFormatter } from "./formatter.js"
+import { buildSuccessSummary, writeReport } from "./report.js"
 import {
   completeTokenBuckets,
   hasLowerAggregateBucket,
@@ -221,4 +223,34 @@ export async function attachConfiguredAnalyses(input: {
       input.config
     )
   }
+}
+
+export async function finalizeAnalysisReport(input: {
+  analysis: TokenAnalysis
+  messages: SessionMessage[]
+  sessionID: string
+  tokenModel: TokenModel
+  providerID: string
+  modelID: string
+  pricingModelName: string
+  includeSubagents?: boolean
+  config: TokenscopeConfig
+  costCalculator: CostCalculator
+  subagentAnalyzer: SubagentAnalyzer
+  contextAnalyzer: ContextAnalyzer
+  skillAnalyzer: SkillAnalyzer
+  warnings: WarningCollector
+  formatter: OutputFormatter
+  outputPath: string
+}): Promise<string> {
+  addPerModelPricingWarnings(input.warnings, input.costCalculator, input.analysis, input.pricingModelName)
+  await attachConfiguredAnalyses(input)
+
+  input.analysis.warnings = input.warnings.list()
+
+  const output = input.formatter.format(input.analysis)
+  const writeError = await writeReport(input.outputPath, output)
+  if (writeError) return writeError
+
+  return buildSuccessSummary(input.outputPath, input.analysis)
 }

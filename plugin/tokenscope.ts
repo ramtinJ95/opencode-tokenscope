@@ -15,13 +15,12 @@ import { ContextAnalyzer } from "./tokenscope-lib/context.js"
 import { SkillAnalyzer } from "./tokenscope-lib/skill.js"
 import { fetchSessionMessages, tryFetchSessionInfo, unwrapResponseData } from "./tokenscope-lib/opencode.js"
 import { WarningCollector, formatErrorMessage } from "./tokenscope-lib/warnings.js"
-import { buildFailureReport, buildSuccessSummary, REPORT_FILENAME, writeReport } from "./tokenscope-lib/report.js"
+import { buildFailureReport, REPORT_FILENAME, writeReport } from "./tokenscope-lib/report.js"
 import {
   addModelSupportWarnings,
-  addPerModelPricingWarnings,
   applySessionInfoTotals,
-  attachConfiguredAnalyses,
   buildAggregateOnlyAnalysis,
+  finalizeAnalysisReport,
   hasSessionInfoAggregateActivity,
   resolveSessionID,
 } from "./tokenscope-lib/session-workflow.js"
@@ -124,8 +123,7 @@ export const TokenAnalyzerPlugin: Plugin = async ({ client, serverUrl, directory
               addModelSupportWarnings(warnings, costCalculator, tokenModel, providerID, modelID, pricingModelName)
 
               const analysis = buildAggregateOnlyAnalysis({ sessionID, sessionInfo: sessionInfo!, tokenModel, pricingModelName })
-              addPerModelPricingWarnings(warnings, costCalculator, analysis, pricingModelName)
-              await attachConfiguredAnalyses({
+              return await finalizeAnalysisReport({
                 analysis,
                 messages,
                 sessionID,
@@ -139,17 +137,10 @@ export const TokenAnalyzerPlugin: Plugin = async ({ client, serverUrl, directory
                 subagentAnalyzer,
                 contextAnalyzer,
                 skillAnalyzer,
+                warnings,
+                formatter,
+                outputPath,
               })
-
-              analysis.warnings = warnings.list()
-
-              const output = formatter.format(analysis)
-              const writeError = await writeReport(outputPath, output)
-              if (writeError) {
-                return writeError
-              }
-
-              return buildSuccessSummary(outputPath, analysis)
             }
 
             const { model: tokenModel, providerID, modelID } = modelResolver.resolveModelAndProvider(messages)
@@ -166,8 +157,7 @@ export const TokenAnalyzerPlugin: Plugin = async ({ client, serverUrl, directory
             analysis.pricingModelName = pricingModelName
             applySessionInfoTotals(analysis, sessionInfo)
 
-            addPerModelPricingWarnings(warnings, costCalculator, analysis, pricingModelName)
-            await attachConfiguredAnalyses({
+            return await finalizeAnalysisReport({
               analysis,
               messages,
               sessionID,
@@ -181,17 +171,10 @@ export const TokenAnalyzerPlugin: Plugin = async ({ client, serverUrl, directory
               subagentAnalyzer,
               contextAnalyzer,
               skillAnalyzer,
+              warnings,
+              formatter,
+              outputPath,
             })
-
-            analysis.warnings = warnings.list()
-
-            const output = formatter.format(analysis)
-            const writeError = await writeReport(outputPath, output)
-            if (writeError) {
-              return writeError
-            }
-
-            return buildSuccessSummary(outputPath, analysis)
           } catch (error) {
             const fatalMessage = formatErrorMessage(error)
             warnings.add(
