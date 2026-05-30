@@ -20,6 +20,8 @@ export interface SessionMessage {
     modelID?: string
     id?: string
   }
+  providerID?: string
+  modelID?: string
 }
 
 export interface SessionMessageInfo {

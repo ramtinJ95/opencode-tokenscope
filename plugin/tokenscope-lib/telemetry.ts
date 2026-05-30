@@ -67,6 +67,8 @@ type TelemetryMessageLike = {
   }
   role?: string
   type?: string
+  providerID?: string
+  modelID?: string
   tokens?: TokenUsage
   cost?: number
   model?: ModelRefLike
@@ -92,8 +94,10 @@ function getMessageRole(message: TelemetryMessageLike): string | undefined {
 function getModelRef(message: TelemetryMessageLike, part?: TelemetryPartLike): ModelRefLike {
   const source = part?.model ?? message.info?.model ?? message.data?.model ?? message.model ?? {}
   return {
-    providerID: normalizeString(source.providerID ?? message.info?.providerID ?? message.data?.providerID),
-    modelID: normalizeString(source.modelID ?? source.id ?? message.info?.modelID ?? message.data?.modelID),
+    providerID: normalizeString(
+      source.providerID ?? message.info?.providerID ?? message.data?.providerID ?? message.providerID
+    ),
+    modelID: normalizeString(source.modelID ?? source.id ?? message.info?.modelID ?? message.data?.modelID ?? message.modelID),
   }
 }
 
