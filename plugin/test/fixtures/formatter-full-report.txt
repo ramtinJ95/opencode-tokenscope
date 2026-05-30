@@ -1,0 +1,219 @@
+═══════════════════════════════════════════════════════════════════════════
+Token Analysis: Session ses_fixture
+Model: claude-sonnet-4-20250514
+═══════════════════════════════════════════════════════════════════════════
+
+WARNINGS
+───────────────────────────────────────────────────
+- fixture warning
+
+TOKEN BREAKDOWN BY CATEGORY
+─────────────────────────────────────────────────────────────────────────
+Estimated using tokenizer analysis of message content:
+
+Input Categories:
+  SYSTEM    ███████████░░░░░░░░░░░░░░░░░░░     36.2% (1,250)
+  USER      ██████████░░░░░░░░░░░░░░░░░░░░     34.8% (1,200)
+  TOOLS     █████████░░░░░░░░░░░░░░░░░░░░░     29.0% (1,000)
+
+  Subtotal: 3,450 estimated input tokens
+  Note: inferred system/overhead values are heuristic estimates from API telemetry.
+
+Output Categories:
+  ASSISTANT ████████████████████████░░░░░░       81.3% (650)
+  REASONING ██████░░░░░░░░░░░░░░░░░░░░░░░░       18.8% (150)
+
+  Subtotal: 800 estimated output tokens
+
+Local Total: 4,250 tokens (estimated)
+
+TOOL USAGE BREAKDOWN
+─────────────────────────────────────────────────────────────────────────
+bash                 ████████████████████████░░░░░░       80.0% (800)    2x
+read                 ██████░░░░░░░░░░░░░░░░░░░░░░░░       20.0% (200)    1x
+
+TOP CONTRIBUTORS
+─────────────────────────────────────────────────────────────────────────
+• System (inferred from API telemetry) 1,250 tokens (29.4%)
+• User #1                      900 tokens (21.2%)
+• bash                         800 tokens (18.8%)
+• Assistant #1                 650 tokens (15.3%)
+• User #2                      300 tokens (7.1%)
+
+═══════════════════════════════════════════════════════════════════════════
+MOST RECENT API CALL
+─────────────────────────────────────────────────────────────────────────
+
+Raw telemetry from last API response:
+  Input (fresh):          1,100 tokens
+  Cache read:            50,000 tokens
+  Cache write:            2,000 tokens
+  Output:                   350 tokens
+  Reasoning:                 75 tokens
+  Provider total:        53,525 tokens
+  Cost:              $0.0123
+  ─────────────────────────────────────
+  Total:                 53,525 tokens
+
+═══════════════════════════════════════════════════════════════════════════
+SESSION TOTALS (All 2 API calls)
+─────────────────────────────────────────────────────────────────────────
+
+Assistant messages observed: 1 (structural count)
+
+Total tokens processed across the entire session (for cost calculation):
+
+  Input tokens:           3,000 (fresh tokens across all calls)
+  Cache read:           100,000 (cached tokens across all calls)
+  Cache write:            2,000 (tokens written to cache)
+  Output tokens:            650 (all model responses)
+  Reasoning tokens:         150 (thinking/reasoning)
+  ─────────────────────────────────────
+  Session Total:        105,800 tokens (for billing)
+  Cache read calls:           1 / 2
+  Cache write calls:          1 / 2
+
+═══════════════════════════════════════════════════════════════════════════
+SESSION COST
+─────────────────────────────────────────────────────────────────────────
+
+Token usage breakdown:
+  Input tokens:           3,000
+  Output tokens:            650
+  Reasoning tokens:         150
+  Cache read:           100,000
+  Cache write:            2,000
+
+Per-model estimated API pricing:
+  anthropic/claude-sonnet-4-20250514 (1 call): $0.0450
+    Input tokens:           2,000 × $3.00/M  = $0.0060
+    Output tokens:            500 × $15.00/M  = $0.0075
+    Cache read:            80,000 × $0.30/M  = $0.0240
+    Cache write:            2,000 × $3.75/M  = $0.0075
+  google/gemini-2.5-flash (1 call): $0.0026
+    Input tokens:           1,000 × $0.30/M  = $0.0003
+    Output tokens:            300 × $2.50/M  = $0.0007
+    Cache read:            20,000 × $0.07/M  = $0.0015
+
+  Blended input:      $0.0063
+  Blended output:     $0.0083
+  Blended cache read: $0.0255
+  Blended cache write: $0.0075
+
+─────────────────────────────────────────────────────────────────────────
+ACTUAL COST (from API):  $0.0456
+
+Note: Actual cost from OpenCode includes provider-specific pricing
+and 200K+ context adjustments.
+
+═══════════════════════════════════════════════════════════════════════════
+CONTEXT BREAKDOWN (Estimated from cache_write tokens)
+─────────────────────────────────────────────────────────────────────────
+
+  Base System Prompt     ███████░░░░░░░░░░░░░░░░░░░░░░░   ~ 1,500 tokens
+  Tool Definitions (12)  ███████████████████░░░░░░░░░░░   ~ 4,200 tokens
+  Environment Context    █░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   ~   150 tokens
+  Project Tree (~42 files) ██░░░░░░░░░░░░░░░░░░░░░░░░░░░░   ~   500 tokens
+  Custom Instructions    █░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   ~   250 tokens
+      → AGENTS.md
+  ───────────────────────────────────────────────────────────────────
+  Total Cached Context:                                  ~6,600 tokens
+
+  Note: Breakdown estimated from first cache_write. Actual distribution may vary.
+
+══════════════════════════════════════════════════════════════════════════
+AVAILABLE SKILLS (always-available context)
+─────────────────────────────────────────────────────────────────────────
+
+OpenCode currently includes a verbose skill catalog in the system prompt on every API call.
+The rows below estimate the per-skill XML entries inside that shared catalog.
+
+  Skill                  Description                                   Tokens
+  ───────────────────────────────────────────────────────────────────────
+  web-browser            Browse pages                                     ~700
+  conventional-commit    Create conventional commits                      ~500
+  ───────────────────────────────────────────────────────────────────────
+  Total: ~1,200 tokens (2 skills available)
+
+  Note: Full system-prompt skill catalog is ~1,500 tokens (includes shared wrapper/preamble).
+        Compact skill tool description adds ~250 tokens more.
+
+═══════════════════════════════════════════════════════════════════════════
+AVAILABLE SUBAGENTS (in task tool definition)
+─────────────────────────────────────────────────────────────────────────
+
+These subagents are embedded in the task tool description and consume tokens on every API call.
+
+  Subagent               Description                                        Tokens
+  ───────────────────────────────────────────────────────────────────────
+  explore                Discovery only subagent                               ~900
+  ───────────────────────────────────────────────────────────────────────
+  Total: ~900 tokens (1 subagents available)
+
+  Note: Full task tool description is ~2,000 tokens (includes instructions/examples).
+
+═══════════════════════════════════════════════════════════════════════════
+LOADED SKILLS (on-demand content)
+─────────────────────────────────────────────────────────────────────────
+
+Skills loaded during this session via the skill tool.
+
+  Skill                  Message #     Tokens     Calls
+  ─────────────────────────────────────────────────────
+  web-browser                    #3      1,200        2x
+  ─────────────────────────────────────────────────────
+  Total: 1,200 tokens (1 skill loaded)
+
+  Note: Loaded skill content stays in context (protected from pruning).
+
+═══════════════════════════════════════════════════════════════════════════
+TOOL DEFINITION COSTS (Estimated from argument analysis)
+─────────────────────────────────────────────────────────────────────────
+
+  Tool                Est. Tokens   Args   Complexity
+  ───────────────────────────────────────────────────────────────────
+  bash                       ~420       3   simple
+  edit                       ~620       4   complex (arrays/objects)
+  ───────────────────────────────────────────────────────────────────
+  Total:             ~      1,040 tokens (2 enabled tools)
+
+  Note: Estimates inferred from tool call arguments in this session.
+        Actual schema tokens may vary +/-20%.
+
+═══════════════════════════════════════════════════════════════════════════
+CACHE EFFICIENCY
+─────────────────────────────────────────────────────────────────────────
+
+  Token Distribution:
+    Cache Read:           100,000 tokens   █████████████████████████████░  95.2%
+    Fresh Input:            3,000 tokens   █░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  2.9%
+    Cache Write:           2,000 tokens   █░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  1.9%
+  ───────────────────────────────────────────────────────────────────
+  Cache Hit Rate:      97.1% (cache read / (cache read + fresh input))
+
+  Cost Analysis (per-model pricing across 2 models):
+    Without caching:   $0.2583
+    With caching:      $0.0393
+  ───────────────────────────────────────────────────────────────────
+  Cost Savings:        $0.2190  (84.8% reduction)
+  Effective Rate:      $0.37/M tokens  (vs. $2.46/M standard)
+
+═══════════════════════════════════════════════════════════════════════════
+SUBAGENT COSTS (1 child sessions, 1 API calls)
+─────────────────────────────────────────────────────────────────────────
+
+  reviewer                     $0.0042  (10,725 tokens, 1 calls)
+─────────────────────────────────────────────────────────────────────────
+Subagent Total:            $0.0042  (10,725 tokens, 1 calls)
+
+═══════════════════════════════════════════════════════════════════════════
+SUMMARY
+─────────────────────────────────────────────────────────────────────────
+
+                          Cost        Tokens          API Calls
+  Main session:      $    0.0456       105,800             2
+  Subagents:         $    0.0042        10,725             1
+─────────────────────────────────────────────────────────────────────────
+  TOTAL:             $    0.0498       116,525             3
+
+═══════════════════════════════════════════════════════════════════════════
