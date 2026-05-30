@@ -3,7 +3,6 @@
 import type { Plugin } from "@opencode-ai/plugin"
 import { tool } from "@opencode-ai/plugin/tool"
 import path from "path"
-import fs from "fs/promises"
 
 import type { SessionMessage } from "./tokenscope-lib/types.js"
 import { DEFAULT_ENTRY_LIMIT, loadModelPricing, loadTokenscopeConfig } from "./tokenscope-lib/config.js"
@@ -16,54 +15,13 @@ import { ContextAnalyzer } from "./tokenscope-lib/context.js"
 import { SkillAnalyzer } from "./tokenscope-lib/skill.js"
 import { fetchSessionMessages, unwrapResponseData } from "./tokenscope-lib/opencode.js"
 import { WarningCollector, formatErrorMessage } from "./tokenscope-lib/warnings.js"
-
-const REPORT_FILENAME = "token-usage-output.txt"
-
-async function writeReport(outputPath: string, output: string): Promise<string | null> {
-  try {
-    try {
-      await fs.unlink(outputPath)
-    } catch {}
-
-    await fs.writeFile(outputPath, output, { encoding: "utf8", flag: "w" })
-    return null
-  } catch (error) {
-    return `Failed to write token analysis to ${outputPath}: ${formatErrorMessage(error)}`
-  }
-}
-
-function buildFailureReport(sessionID: string | undefined, warnings: string[], fatalMessage: string): string {
-  const lines: string[] = []
-  const timestamp = new Date().toISOString()
-
-  lines.push("═══════════════════════════════════════════════════════════════════════════")
-  lines.push(`Token Analysis: Session ${sessionID ?? "unknown"}`)
-  lines.push("Status: Partial / failed analysis")
-  lines.push("═══════════════════════════════════════════════════════════════════════════")
-  lines.push("")
-  lines.push(`Timestamp: ${timestamp}`)
-  lines.push("")
-  lines.push("TokenScope hit a non-fatal error and returned this fallback report so the OpenCode session stays usable.")
-  lines.push("")
-  lines.push(`Fatal error: ${fatalMessage}`)
-
-  if (warnings.length > 0) {
-    lines.push("")
-    lines.push("Warnings:")
-    for (const warning of warnings) {
-      lines.push(`- ${warning}`)
-    }
-  }
-
-  lines.push("")
-  lines.push("Try again after switching to a supported model or updating the plugin.")
-  return lines.join("\n")
-}
-
-function normalizeSessionID(sessionID?: string): string | undefined {
-  const normalized = sessionID?.trim()
-  return normalized ? normalized : undefined
-}
+import { buildFailureReport, buildSuccessSummary, REPORT_FILENAME, writeReport } from "./tokenscope-lib/report.js"
+import {
+  addModelSupportWarnings,
+  addPerModelPricingWarnings,
+  attachConfiguredAnalyses,
+  resolveSessionID,
+} from "./tokenscope-lib/session-workflow.js"
 
 export const TokenAnalyzerPlugin: Plugin = async ({ client, serverUrl, directory }) => {
   const pricingData = await loadModelPricing()
@@ -101,7 +59,7 @@ export const TokenAnalyzerPlugin: Plugin = async ({ client, serverUrl, directory
           const formatter = new OutputFormatter(costCalculator)
           formatter.setConfig(config)
 
-          const sessionID = normalizeSessionID(args.sessionID) ?? normalizeSessionID(context.sessionID)
+          const sessionID = resolveSessionID(args.sessionID, context.sessionID)
           if (!sessionID) {
             const output = buildFailureReport(undefined, warnings.list(), "No session ID available for token analysis")
             const writeError = await writeReport(outputPath, output)
@@ -127,19 +85,7 @@ export const TokenAnalyzerPlugin: Plugin = async ({ client, serverUrl, directory
             const { model: tokenModel, providerID, modelID } = modelResolver.resolveModelAndProvider(messages)
             const pricingModelName = costCalculator.buildLookupKey(providerID, modelID) || tokenModel.name
 
-            if (tokenModel.spec.kind === "approx") {
-              warnings.add(
-                `Model '${providerID}/${modelID}' is not currently supported by a model-specific tokenizer. Token counts use an approximate character-based fallback.`,
-                `unsupported-tokenizer:${providerID}:${modelID}`
-              )
-            }
-
-            if (!costCalculator.hasPricing(pricingModelName)) {
-              warnings.add(
-                `Pricing for '${pricingModelName}' was not found in models.json. Cost estimates use the default fallback rates ($1/M input, $3/M output, no cache pricing).`,
-                `missing-pricing:${pricingModelName}`
-              )
-            }
+            addModelSupportWarnings(warnings, costCalculator, tokenModel, providerID, modelID, pricingModelName)
 
             const analysis = await analysisEngine.analyze(
               sessionID,
@@ -149,41 +95,22 @@ export const TokenAnalyzerPlugin: Plugin = async ({ client, serverUrl, directory
             )
             analysis.pricingModelName = pricingModelName
 
-            for (const modelUsage of analysis.perModelUsage) {
-              const modelPricingName = costCalculator.resolvePricingModelName(modelUsage, pricingModelName)
-              if (!costCalculator.hasPricing(modelPricingName)) {
-                warnings.add(
-                  `Pricing for '${modelPricingName}' was not found in models.json. Cost estimates for that model use the default fallback rates ($1/M input, $3/M output, no cache pricing).`,
-                  `missing-pricing:${modelPricingName}`
-                )
-              }
-            }
-
-            // Subagent analysis (respects config)
-            const shouldIncludeSubagents = args.includeSubagents !== false && config.enableSubagentAnalysis
-            if (shouldIncludeSubagents) {
-              analysis.subagentAnalysis = await subagentAnalyzer.analyzeChildSessions(sessionID)
-            }
-
-            // Context analysis (context breakdown, tool estimates, cache efficiency)
-            const pricing = costCalculator.getPricing(pricingModelName)
-            const contextResult = await contextAnalyzer.analyze(sessionID, tokenModel, pricing, config)
-
-            // Merge context analysis results into main analysis
-            if (contextResult.contextBreakdown) {
-              analysis.contextBreakdown = contextResult.contextBreakdown
-            }
-            if (contextResult.toolEstimates) {
-              analysis.toolEstimates = contextResult.toolEstimates
-            }
-            if (contextResult.cacheEfficiency) {
-              analysis.cacheEfficiency = contextResult.cacheEfficiency
-            }
-
-            // Skill analysis (respects config)
-            if (config.enableSkillAnalysis) {
-              analysis.skillAnalysis = await skillAnalyzer.analyze(messages, providerID, modelID, tokenModel, config)
-            }
+            addPerModelPricingWarnings(warnings, costCalculator, analysis, pricingModelName)
+            await attachConfiguredAnalyses({
+              analysis,
+              messages,
+              sessionID,
+              tokenModel,
+              providerID,
+              modelID,
+              pricingModelName,
+              includeSubagents: args.includeSubagents,
+              config,
+              costCalculator,
+              subagentAnalyzer,
+              contextAnalyzer,
+              skillAnalyzer,
+            })
 
             analysis.warnings = warnings.list()
 
@@ -193,39 +120,7 @@ export const TokenAnalyzerPlugin: Plugin = async ({ client, serverUrl, directory
               return writeError
             }
 
-            const timestamp = new Date().toISOString()
-            const localEstimatedTokens = analysis.totalTokens
-            const mainSessionTelemetryTokens =
-              analysis.inputTokens +
-              analysis.outputTokens +
-              analysis.reasoningTokens +
-              analysis.cacheReadTokens +
-              analysis.cacheWriteTokens
-            const formattedLocalEstimated = new Intl.NumberFormat("en-US").format(localEstimatedTokens)
-            const formattedMainTelemetry = new Intl.NumberFormat("en-US").format(mainSessionTelemetryTokens)
-
-            let summaryMsg =
-              `Token analysis complete! Full report saved to: ${outputPath}` +
-              `\n\nTimestamp: ${timestamp}` +
-              `\nLocal estimated content tokens: ${formattedLocalEstimated}` +
-              `\nSession telemetry total: ${formattedMainTelemetry}`
-
-            if (analysis.subagentAnalysis && analysis.subagentAnalysis.subagents.length > 0) {
-              const subagentTokens = new Intl.NumberFormat("en-US").format(analysis.subagentAnalysis.totalTokens)
-              const grandTotal = new Intl.NumberFormat("en-US").format(
-                mainSessionTelemetryTokens + analysis.subagentAnalysis.totalTokens
-              )
-              summaryMsg += `\nSubagent sessions: ${analysis.subagentAnalysis.subagents.length} (${subagentTokens} tokens)`
-              summaryMsg += `\nGrand total: ${grandTotal} tokens`
-            }
-
-            if (analysis.warnings.length > 0) {
-              summaryMsg += `\nWarnings: ${analysis.warnings.length} (see report for details)`
-            }
-
-            summaryMsg += `\n\nUse: cat ${REPORT_FILENAME} (or read the file) to view the complete analysis.`
-
-            return summaryMsg
+            return buildSuccessSummary(outputPath, analysis)
           } catch (error) {
             const fatalMessage = formatErrorMessage(error)
             warnings.add(
