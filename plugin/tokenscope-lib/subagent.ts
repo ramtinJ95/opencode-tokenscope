@@ -104,6 +104,12 @@ export class SubagentAnalyzer {
       const totalTokens = inputTokens + outputTokens + reasoningTokens + cacheReadTokens + cacheWriteTokens
       const estimatedCost = telemetry.perModelUsage.reduce((sum, modelUsage) => {
         const pricingModelName = this.costCalculator.buildLookupKey(modelUsage.providerID, modelUsage.modelID) || modelUsage.modelName
+        if (!this.costCalculator.hasPricing(pricingModelName)) {
+          this.warnings?.add(
+            `Pricing for child session model '${pricingModelName}' was not found in models.json. Subagent cost estimates for that model use the default fallback rates ($1/M input, $3/M output, no cache pricing).`,
+            `missing-subagent-pricing:${pricingModelName}`
+          )
+        }
         const pricing = this.costCalculator.getPricing(pricingModelName)
         return (
           sum +

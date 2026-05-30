@@ -51,8 +51,7 @@ export class CostCalculator {
     const usage = analysis.perModelUsage.length > 0 ? analysis.perModelUsage : [this.buildFallbackUsage(analysis)]
 
     return usage.map((modelUsage) => {
-      const pricingModelName =
-        this.buildLookupKey(modelUsage.providerID, modelUsage.modelID) || modelUsage.modelName || fallbackPricingModelName
+      const pricingModelName = this.resolvePricingModelName(modelUsage, fallbackPricingModelName)
       const pricing = this.getPricing(pricingModelName)
       const estimatedInputCost = (modelUsage.inputTokens / 1_000_000) * pricing.input
       const estimatedOutputCost = ((modelUsage.outputTokens + modelUsage.reasoningTokens) / 1_000_000) * pricing.output
@@ -75,6 +74,16 @@ export class CostCalculator {
         pricePerMillionCacheWrite: pricing.cacheWrite,
       }
     })
+  }
+
+  private resolvePricingModelName(modelUsage: ModelTokenUsage, fallbackPricingModelName: string): string {
+    const lookupKey = this.buildLookupKey(modelUsage.providerID, modelUsage.modelID)
+    if (lookupKey) return lookupKey
+
+    const modelName = modelUsage.modelName.trim()
+    if (modelName && modelName !== "unknown model") return modelName
+
+    return fallbackPricingModelName
   }
 
   private buildFallbackUsage(analysis: TokenAnalysis): ModelTokenUsage {

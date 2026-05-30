@@ -552,6 +552,7 @@ export class OutputFormatter {
   private formatCacheEfficiency(efficiency: CacheEfficiency, cost: CostEstimate, modelName: string): string[] {
     const lines: string[] = []
     const total = efficiency.totalInputTokens
+    const modelAwareEfficiency = this.calculateModelAwareCacheEfficiency(efficiency, cost)
 
     lines.push(``)
     lines.push(`\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550`)
@@ -583,22 +584,59 @@ export class OutputFormatter {
     lines.push(``)
 
     // Cost analysis
+    if (cost.perModelCosts.length > 1) {
+      lines.push(`  Cost Analysis (per-model pricing across ${cost.perModelCosts.length} models):`)
+      lines.push(`    Without caching:   $${modelAwareEfficiency.costWithoutCaching.toFixed(4)}`)
+      lines.push(`    With caching:      $${modelAwareEfficiency.costWithCaching.toFixed(4)}`)
+    } else {
+      lines.push(
+        `  Cost Analysis (${modelName} @ $${cost.pricePerMillionInput.toFixed(2)}/M input, $${cost.pricePerMillionCacheRead.toFixed(2)}/M cache read, $${cost.pricePerMillionCacheWrite.toFixed(2)}/M cache write):`
+      )
+      lines.push(
+        `    Without caching:   $${modelAwareEfficiency.costWithoutCaching.toFixed(4)}  (${this.formatNumber(total)} tokens x $${cost.pricePerMillionInput.toFixed(2)}/M)`
+      )
+      lines.push(
+        `    With caching:      $${modelAwareEfficiency.costWithCaching.toFixed(4)}  (fresh x $${cost.pricePerMillionInput.toFixed(2)}/M + cache read x $${cost.pricePerMillionCacheRead.toFixed(2)}/M + cache write x $${cost.pricePerMillionCacheWrite.toFixed(2)}/M)`
+      )
+    }
+    lines.push(`  ───────────────────────────────────────────────────────────────────`)
     lines.push(
-      `  Cost Analysis (${modelName} @ $${cost.pricePerMillionInput.toFixed(2)}/M input, $${cost.pricePerMillionCacheRead.toFixed(2)}/M cache read, $${cost.pricePerMillionCacheWrite.toFixed(2)}/M cache write):`
+      `  Cost Savings:        $${modelAwareEfficiency.costSavings.toFixed(4)}  (${modelAwareEfficiency.savingsPercent.toFixed(1)}% reduction)`
     )
     lines.push(
-      `    Without caching:   $${efficiency.costWithoutCaching.toFixed(4)}  (${this.formatNumber(total)} tokens x $${cost.pricePerMillionInput.toFixed(2)}/M)`
-    )
-    lines.push(
-      `    With caching:      $${efficiency.costWithCaching.toFixed(4)}  (fresh x $${cost.pricePerMillionInput.toFixed(2)}/M + cache read x $${cost.pricePerMillionCacheRead.toFixed(2)}/M + cache write x $${cost.pricePerMillionCacheWrite.toFixed(2)}/M)`
-    )
-    lines.push(`  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
-    lines.push(`  Cost Savings:        $${efficiency.costSavings.toFixed(4)}  (${efficiency.savingsPercent.toFixed(1)}% reduction)`)
-    lines.push(
-      `  Effective Rate:      $${efficiency.effectiveRate.toFixed(2)}/M tokens  (vs. $${efficiency.standardRate.toFixed(2)}/M standard)`
+      `  Effective Rate:      $${modelAwareEfficiency.effectiveRate.toFixed(2)}/M tokens  (vs. $${modelAwareEfficiency.standardRate.toFixed(2)}/M standard)`
     )
 
     return lines
+  }
+
+  private calculateModelAwareCacheEfficiency(efficiency: CacheEfficiency, cost: CostEstimate): CacheEfficiency {
+    if (cost.perModelCosts.length === 0) return efficiency
+
+    const costWithoutCaching = cost.perModelCosts.reduce((sum, modelCost) => {
+      const inputIfUncached = modelCost.inputTokens + modelCost.cacheReadTokens + modelCost.cacheWriteTokens
+      return sum + (inputIfUncached / 1_000_000) * modelCost.pricePerMillionInput
+    }, 0)
+    const costWithCaching = cost.perModelCosts.reduce(
+      (sum, modelCost) =>
+        sum + modelCost.estimatedInputCost + modelCost.estimatedCacheReadCost + modelCost.estimatedCacheWriteCost,
+      0
+    )
+    const costSavings = costWithoutCaching - costWithCaching
+    const savingsPercent = costWithoutCaching > 0 ? (costSavings / costWithoutCaching) * 100 : 0
+    const effectiveRate = efficiency.totalInputTokens > 0 ? (costWithCaching / efficiency.totalInputTokens) * 1_000_000 : 0
+    const standardRate =
+      efficiency.totalInputTokens > 0 ? (costWithoutCaching / efficiency.totalInputTokens) * 1_000_000 : efficiency.standardRate
+
+    return {
+      ...efficiency,
+      costWithoutCaching,
+      costWithCaching,
+      costSavings,
+      savingsPercent,
+      effectiveRate,
+      standardRate,
+    }
   }
 
   private formatEfficiencyBar(value: number, total: number): string {
