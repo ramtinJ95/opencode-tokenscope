@@ -83,24 +83,30 @@ export class SubagentAnalyzer {
       const telemetry = summarizeTelemetry(messages)
       const { providerID, modelName } = this.resolveChildModel(child, messages)
 
-      const inputTokens = telemetry.inputTokens
-      const outputTokens = telemetry.outputTokens
-      const reasoningTokens = telemetry.reasoningTokens
-      const cacheReadTokens = telemetry.cacheReadTokens
-      const cacheWriteTokens = telemetry.cacheWriteTokens
+      const telemetryTokens = {
+        inputTokens: telemetry.inputTokens,
+        outputTokens: telemetry.outputTokens,
+        reasoningTokens: telemetry.reasoningTokens,
+        cacheReadTokens: telemetry.cacheReadTokens,
+        cacheWriteTokens: telemetry.cacheWriteTokens,
+      }
       const sessionTokens = this.readSessionTokens(child.tokens)
-      const apiCost = this.safeNumber(child.cost) ?? telemetry.sessionCost
-      if (messages.length === 0 && !sessionTokens && apiCost === 0) return null
+      const sessionTokensHaveActivity = sessionTokens ? this.totalTokens(sessionTokens) > 0 : false
+      const telemetryHasActivity = this.totalTokens(telemetryTokens) > 0 || telemetry.sessionCost > 0
+      const effectiveSessionTokens = sessionTokens && (sessionTokensHaveActivity || !telemetryHasActivity) ? sessionTokens : null
+      const childCost = this.safeNumber(child.cost)
+      const apiCost = childCost !== undefined && (childCost > 0 || !telemetryHasActivity) ? childCost : telemetry.sessionCost
 
       const assistantMessageCount = telemetry.assistantMessageCount
       const apiCallCount = telemetry.apiCallCount
-      const finalInputTokens = sessionTokens?.inputTokens ?? inputTokens
-      const finalOutputTokens = sessionTokens?.outputTokens ?? outputTokens
-      const finalReasoningTokens = sessionTokens?.reasoningTokens ?? reasoningTokens
-      const finalCacheReadTokens = sessionTokens?.cacheReadTokens ?? cacheReadTokens
-      const finalCacheWriteTokens = sessionTokens?.cacheWriteTokens ?? cacheWriteTokens
+      const finalInputTokens = effectiveSessionTokens?.inputTokens ?? telemetryTokens.inputTokens
+      const finalOutputTokens = effectiveSessionTokens?.outputTokens ?? telemetryTokens.outputTokens
+      const finalReasoningTokens = effectiveSessionTokens?.reasoningTokens ?? telemetryTokens.reasoningTokens
+      const finalCacheReadTokens = effectiveSessionTokens?.cacheReadTokens ?? telemetryTokens.cacheReadTokens
+      const finalCacheWriteTokens = effectiveSessionTokens?.cacheWriteTokens ?? telemetryTokens.cacheWriteTokens
       const totalTokens =
         finalInputTokens + finalOutputTokens + finalReasoningTokens + finalCacheReadTokens + finalCacheWriteTokens
+      if (messages.length === 0 && totalTokens === 0 && apiCost === 0) return null
       const fallbackPricingModelName = this.costCalculator.buildLookupKey(providerID, modelName) || modelName
       const costUsage = this.buildCostUsage(telemetry.perModelUsage, fallbackPricingModelName, {
         inputTokens: finalInputTokens,
@@ -297,8 +303,23 @@ export class SubagentAnalyzer {
       apiCallCount: 0,
       callsWithCacheRead: usage.cacheReadTokens > 0 ? 1 : 0,
       callsWithCacheWrite: usage.cacheWriteTokens > 0 ? 1 : 0,
-      calls: [usage],
     }
+  }
+
+  private totalTokens(usage: {
+    inputTokens?: number
+    outputTokens?: number
+    reasoningTokens?: number
+    cacheReadTokens?: number
+    cacheWriteTokens?: number
+  }): number {
+    return (
+      (usage.inputTokens ?? 0) +
+      (usage.outputTokens ?? 0) +
+      (usage.reasoningTokens ?? 0) +
+      (usage.cacheReadTokens ?? 0) +
+      (usage.cacheWriteTokens ?? 0)
+    )
   }
 
   private safeNumber(value: unknown): number | undefined {

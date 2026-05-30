@@ -328,11 +328,55 @@ test("calculateCost prefers the highest matching explicit context tier", () => {
       inputTokens: 2_500,
       outputTokens: 1_000,
       apiCallCount: 1,
+      perModelUsage: [
+        {
+          providerID: "provider",
+          modelID: "tiered-model",
+          modelName: "provider/tiered-model",
+          inputTokens: 2_500,
+          outputTokens: 1_000,
+          reasoningTokens: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          apiCost: 0,
+          apiCallCount: 1,
+          callsWithCacheRead: 0,
+          callsWithCacheWrite: 0,
+          calls: [{ inputTokens: 2_500, outputTokens: 1_000, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }],
+        },
+      ],
     })
   )
 
   expect(cost.perModelCosts[0]?.usesTieredPricing).toBe(true)
   expect(cost.estimatedSessionCost).toBeCloseTo(0.0105)
+})
+
+test("calculateCost uses base pricing when aggregate-only context is not known per call", () => {
+  const calculator = new CostCalculator({
+    "provider/tiered-model": {
+      input: 1,
+      output: 10,
+      cacheRead: 0,
+      cacheWrite: 0,
+      context_over_200k: { input: 2, output: 20, cache_read: 0, cache_write: 0 },
+    },
+  })
+
+  const cost = calculator.calculateCost(
+    baseAnalysis({
+      pricingModelName: "provider/tiered-model",
+      inputTokens: 400_001,
+      outputTokens: 200_000,
+      reasoningTokens: 200_000,
+      apiCallCount: 0,
+    })
+  )
+
+  expect(cost.perModelCosts[0]?.usesTieredPricing).toBe(false)
+  expect(cost.estimatedInputCost).toBeCloseTo(0.400001)
+  expect(cost.estimatedOutputCost).toBeCloseTo(4)
+  expect(cost.estimatedSessionCost).toBeCloseTo(4.400001)
 })
 
 test("applySessionInfoTotals prefers persisted OpenCode session aggregates", () => {
@@ -432,6 +476,47 @@ test("calculateCost reconciles persisted aggregate deltas into estimates", () =>
   expect(cost.estimatedSessionCost).toBeCloseTo(0.003)
 })
 
+test("calculateCost uses base pricing for reconciled aggregate deltas", () => {
+  const calculator = new CostCalculator({
+    "provider/tiered-model": {
+      input: 1,
+      output: 1,
+      cacheRead: 0,
+      cacheWrite: 0,
+      context_over_200k: { input: 2, output: 2, cache_read: 0, cache_write: 0 },
+    },
+  })
+
+  const cost = calculator.calculateCost(
+    baseAnalysis({
+      pricingModelName: "provider/tiered-model",
+      inputTokens: 250_000,
+      apiCallCount: 1,
+      perModelUsage: [
+        {
+          providerID: "provider",
+          modelID: "tiered-model",
+          modelName: "provider/tiered-model",
+          inputTokens: 1_000,
+          outputTokens: 0,
+          reasoningTokens: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          apiCost: 0,
+          apiCallCount: 1,
+          callsWithCacheRead: 0,
+          callsWithCacheWrite: 0,
+          calls: [{ inputTokens: 1_000, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }],
+        },
+      ],
+    })
+  )
+
+  expect(cost.perModelCosts).toHaveLength(2)
+  expect(cost.perModelCosts[1]?.usesTieredPricing).toBe(false)
+  expect(cost.estimatedInputCost).toBeCloseTo(0.25)
+})
+
 test("calculateCost supports OpenCode nested cache pricing", () => {
   const calculator = new CostCalculator({
     "provider/normalized": {
@@ -451,6 +536,23 @@ test("calculateCost supports OpenCode nested cache pricing", () => {
       cacheReadTokens: 1_000,
       cacheWriteTokens: 1_000,
       apiCallCount: 1,
+      perModelUsage: [
+        {
+          providerID: "provider",
+          modelID: "normalized",
+          modelName: "provider/normalized",
+          inputTokens: 1_000,
+          outputTokens: 0,
+          reasoningTokens: 0,
+          cacheReadTokens: 1_000,
+          cacheWriteTokens: 1_000,
+          apiCost: 0,
+          apiCallCount: 1,
+          callsWithCacheRead: 1,
+          callsWithCacheWrite: 1,
+          calls: [{ inputTokens: 1_000, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 1_000, cacheWriteTokens: 1_000 }],
+        },
+      ],
     })
   )
 
@@ -581,6 +683,54 @@ test("SubagentAnalyzer preserves telemetry buckets missing from child aggregates
   expect(result.subagents[0]?.cacheReadTokens).toBe(7)
   expect(result.subagents[0]?.cacheWriteTokens).toBe(8)
   expect(result.totalEstimatedCost).toBeGreaterThan(0)
+})
+
+test("SubagentAnalyzer ignores stale zero child aggregates when telemetry has activity", async () => {
+  const calculator = new CostCalculator({
+    "openai/gpt-5.4-mini": { input: 1, output: 3, cacheWrite: 2, cacheRead: 0.5 },
+  })
+  const analyzer = new SubagentAnalyzer(
+    {
+      session: {
+        children: async ({ path }: { path: { id?: string; sessionID?: string } }) => {
+          const id = path.id ?? path.sessionID
+          if (id === "ses_parent") {
+            return [
+              {
+                id: "ses_child",
+                title: "worker subagent",
+                tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+                cost: 0,
+              },
+            ]
+          }
+          return []
+        },
+        messages: async () => [
+          {
+            info: { id: "msg_child", role: "assistant", providerID: "openai", modelID: "gpt-5.4-mini" },
+            parts: [
+              {
+                type: "step-finish",
+                tokens: { input: 5, output: 6, reasoning: 0, cache: { read: 7, write: 8 } },
+                cost: 0.0123,
+              },
+            ],
+          },
+        ],
+      },
+    },
+    calculator
+  )
+
+  const result = await analyzer.analyzeChildSessions("ses_parent")
+
+  expect(result.subagents[0]?.inputTokens).toBe(5)
+  expect(result.subagents[0]?.outputTokens).toBe(6)
+  expect(result.subagents[0]?.cacheReadTokens).toBe(7)
+  expect(result.subagents[0]?.cacheWriteTokens).toBe(8)
+  expect(result.subagents[0]?.apiCost).toBeCloseTo(0.0123)
+  expect(result.totalApiCost).toBeCloseTo(0.0123)
 })
 
 test("SubagentAnalyzer reports aggregate-only child sessions", async () => {

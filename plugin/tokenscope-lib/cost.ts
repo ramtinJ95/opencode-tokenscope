@@ -123,7 +123,6 @@ export class CostCalculator {
         apiCallCount: 0,
         callsWithCacheRead: delta.cacheReadTokens > 0 ? 1 : 0,
         callsWithCacheWrite: delta.cacheWriteTokens > 0 ? 1 : 0,
-        calls: [delta],
       },
     ]
   }
@@ -135,24 +134,27 @@ export class CostCalculator {
 
   private calculateModelUsageComponents(modelUsage: ModelTokenUsage, pricingModelName: string): CostComponents {
     const pricing = this.getPricing(pricingModelName)
-    const calls = modelUsage.calls?.length ? modelUsage.calls : [this.asUsageCall(modelUsage)]
+    const hasKnownPerCallContext = Boolean(modelUsage.calls?.length)
+    const calls = hasKnownPerCallContext ? modelUsage.calls! : [this.asUsageCall(modelUsage)]
     let input = 0
     let uncachedInput = 0
     let output = 0
     let cacheRead = 0
     let cacheWrite = 0
     let usesTieredPricing = false
-    let displayRates = this.selectPricingRates(pricing, this.rawContextTokens(this.asUsageCall(modelUsage)))
+    let displayRates = hasKnownPerCallContext
+      ? this.selectPricingRates(pricing, this.rawContextTokens(this.asUsageCall(modelUsage)))
+      : this.baseRates(pricing)
 
     for (const call of calls) {
       const rawContextTokens = this.rawContextTokens(call)
-      const rates = this.selectPricingRates(pricing, rawContextTokens)
+      const rates = hasKnownPerCallContext ? this.selectPricingRates(pricing, rawContextTokens) : this.baseRates(pricing)
       uncachedInput += (rawContextTokens / 1_000_000) * rates.input
       input += (call.inputTokens / 1_000_000) * rates.input
       output += ((call.outputTokens + call.reasoningTokens) / 1_000_000) * rates.output
       cacheRead += (call.cacheReadTokens / 1_000_000) * rates.cacheRead
       cacheWrite += (call.cacheWriteTokens / 1_000_000) * rates.cacheWrite
-      usesTieredPricing ||= this.usesNonBasePricing(pricing, rawContextTokens)
+      usesTieredPricing ||= hasKnownPerCallContext && this.usesNonBasePricing(pricing, rawContextTokens)
       displayRates = rates
     }
 
