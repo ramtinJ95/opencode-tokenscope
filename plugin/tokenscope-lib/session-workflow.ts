@@ -1,4 +1,4 @@
-import type { ContextAnalysisResult, SessionMessage, TokenAnalysis, TokenModel, TokenscopeConfig } from "./types.js"
+import type { ContextAnalysisResult, SessionInfo, SessionMessage, TokenAnalysis, TokenModel, TokenscopeConfig } from "./types.js"
 import { CostCalculator } from "./cost.js"
 import { SubagentAnalyzer } from "./subagent.js"
 import { ContextAnalyzer } from "./context.js"
@@ -52,6 +52,25 @@ export function addPerModelPricingWarnings(
       )
     }
   }
+}
+
+function safeNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : undefined
+}
+
+export function applySessionInfoTotals(analysis: TokenAnalysis, sessionInfo: SessionInfo | undefined): void {
+  if (!sessionInfo) return
+
+  const tokens = sessionInfo.tokens
+  if (tokens) {
+    analysis.inputTokens = safeNumber(tokens.input) ?? analysis.inputTokens
+    analysis.outputTokens = safeNumber(tokens.output) ?? analysis.outputTokens
+    analysis.reasoningTokens = safeNumber(tokens.reasoning) ?? analysis.reasoningTokens
+    analysis.cacheReadTokens = safeNumber(tokens.cache?.read) ?? analysis.cacheReadTokens
+    analysis.cacheWriteTokens = safeNumber(tokens.cache?.write) ?? analysis.cacheWriteTokens
+  }
+
+  analysis.sessionCost = safeNumber(sessionInfo.cost) ?? analysis.sessionCost
 }
 
 function applyContextAnalysis(analysis: TokenAnalysis, contextResult: ContextAnalysisResult): void {

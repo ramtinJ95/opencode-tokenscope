@@ -2,6 +2,7 @@ import { expect, test } from "bun:test"
 
 import { ModelResolver } from "../tokenscope-lib/analyzer.js"
 import { CostCalculator } from "../tokenscope-lib/cost.js"
+import { applySessionInfoTotals } from "../tokenscope-lib/session-workflow.js"
 import { summarizeTelemetry } from "../tokenscope-lib/telemetry.js"
 import type { TokenAnalysis } from "../tokenscope-lib/types.js"
 
@@ -243,5 +244,116 @@ test("calculateCost falls back when telemetry only has provider metadata", () =>
   expect(cost.perModelCosts[0]?.pricingModelName).toBe("openai/gpt-5.4-mini")
   expect(cost.estimatedSessionCost).toBeCloseTo(0.0012)
   expect(cost.unknownPricingModels).toEqual([])
+})
+
+test("calculateCost applies OpenCode-style context_over_200k pricing per API call", () => {
+  const calculator = new CostCalculator({
+    "provider/tiered-model": {
+      input: 1,
+      output: 10,
+      cacheRead: 0.1,
+      cacheWrite: 2,
+      context_over_200k: { input: 2, output: 20, cache_read: 0.2, cache_write: 4 },
+    },
+  })
+
+  const cost = calculator.calculateCost(
+    baseAnalysis({
+      pricingModelName: "provider/tiered-model",
+      inputTokens: 400_001,
+      outputTokens: 200_000,
+      reasoningTokens: 200_000,
+      apiCallCount: 2,
+      perModelUsage: [
+        {
+          providerID: "provider",
+          modelID: "tiered-model",
+          modelName: "provider/tiered-model",
+          inputTokens: 400_001,
+          outputTokens: 200_000,
+          reasoningTokens: 200_000,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          apiCost: 0,
+          apiCallCount: 2,
+          callsWithCacheRead: 0,
+          callsWithCacheWrite: 0,
+          calls: [
+            {
+              inputTokens: 200_000,
+              outputTokens: 100_000,
+              reasoningTokens: 100_000,
+              cacheReadTokens: 0,
+              cacheWriteTokens: 0,
+            },
+            {
+              inputTokens: 200_001,
+              outputTokens: 100_000,
+              reasoningTokens: 100_000,
+              cacheReadTokens: 0,
+              cacheWriteTokens: 0,
+            },
+          ],
+        },
+      ],
+    })
+  )
+
+  expect(cost.perModelCosts[0]?.usesTieredPricing).toBe(true)
+  expect(cost.estimatedInputCost).toBeCloseTo(0.600002)
+  expect(cost.estimatedOutputCost).toBeCloseTo(6)
+  expect(cost.estimatedSessionCost).toBeCloseTo(6.600002)
+})
+
+test("calculateCost prefers the highest matching explicit context tier", () => {
+  const calculator = new CostCalculator({
+    "provider/tiered-model": {
+      input: 1,
+      output: 1,
+      cacheRead: 0,
+      cacheWrite: 0,
+      tiers: [
+        { tier: { type: "context", size: 1_000 }, input: 2, output: 2, cache_read: 0, cache_write: 0 },
+        { tier: { type: "context", size: 2_000 }, input: 3, output: 3, cache_read: 0, cache_write: 0 },
+      ],
+      context_over_200k: { input: 9, output: 9, cache_read: 0, cache_write: 0 },
+    },
+  })
+
+  const cost = calculator.calculateCost(
+    baseAnalysis({
+      pricingModelName: "provider/tiered-model",
+      inputTokens: 2_500,
+      outputTokens: 1_000,
+      apiCallCount: 1,
+    })
+  )
+
+  expect(cost.perModelCosts[0]?.usesTieredPricing).toBe(true)
+  expect(cost.estimatedSessionCost).toBeCloseTo(0.0105)
+})
+
+test("applySessionInfoTotals prefers persisted OpenCode session aggregates", () => {
+  const analysis = baseAnalysis({
+    inputTokens: 1,
+    outputTokens: 2,
+    reasoningTokens: 3,
+    cacheReadTokens: 4,
+    cacheWriteTokens: 5,
+    sessionCost: 0.01,
+  })
+
+  applySessionInfoTotals(analysis, {
+    id: "ses_test",
+    cost: 0.1234,
+    tokens: { input: 10, output: 20, reasoning: 30, cache: { read: 40, write: 50 } },
+  })
+
+  expect(analysis.inputTokens).toBe(10)
+  expect(analysis.outputTokens).toBe(20)
+  expect(analysis.reasoningTokens).toBe(30)
+  expect(analysis.cacheReadTokens).toBe(40)
+  expect(analysis.cacheWriteTokens).toBe(50)
+  expect(analysis.sessionCost).toBe(0.1234)
 })
 

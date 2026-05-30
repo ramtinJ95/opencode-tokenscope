@@ -1,6 +1,6 @@
 // Telemetry helpers - extracts per-API-call token and cost data from stored session messages
 
-import type { ModelTokenUsage, TokenUsage } from "./types.js"
+import type { ModelTokenUsage, ModelTokenUsageCall, TokenUsage } from "./types.js"
 
 export interface TelemetryCall {
   providerID?: string
@@ -182,6 +182,13 @@ function summarizeCallsByModel(calls: TelemetryCall[]): ModelTokenUsage[] {
   const byModel = new Map<string, ModelTokenUsage>()
 
   for (const call of calls) {
+    const usageCall: ModelTokenUsageCall = {
+      inputTokens: call.inputTokens,
+      outputTokens: call.outputTokens,
+      reasoningTokens: call.reasoningTokens,
+      cacheReadTokens: call.cacheReadTokens,
+      cacheWriteTokens: call.cacheWriteTokens,
+    }
     const key = modelGroupingKey(call.providerID, call.modelID)
     const existing = byModel.get(key) ?? {
       providerID: call.providerID,
@@ -196,6 +203,7 @@ function summarizeCallsByModel(calls: TelemetryCall[]): ModelTokenUsage[] {
       apiCallCount: 0,
       callsWithCacheRead: 0,
       callsWithCacheWrite: 0,
+      calls: [],
     }
 
     existing.inputTokens += call.inputTokens
@@ -207,6 +215,7 @@ function summarizeCallsByModel(calls: TelemetryCall[]): ModelTokenUsage[] {
     existing.apiCallCount += 1
     if (call.cacheReadTokens > 0) existing.callsWithCacheRead += 1
     if (call.cacheWriteTokens > 0) existing.callsWithCacheWrite += 1
+    existing.calls?.push(usageCall)
 
     byModel.set(key, existing)
   }

@@ -1,6 +1,32 @@
 // CostCalculator - calculates costs from token analysis
 
-import type { TokenAnalysis, CostEstimate, ModelCostEstimate, ModelPricing, ModelTokenUsage } from "./types.js"
+import type {
+  TokenAnalysis,
+  CostEstimate,
+  ModelCostEstimate,
+  ModelPricing,
+  ModelTokenUsage,
+  ModelTokenUsageCall,
+} from "./types.js"
+
+type PricingRates = {
+  input: number
+  output: number
+  cacheRead: number
+  cacheWrite: number
+}
+
+type CostComponents = {
+  input: number
+  output: number
+  cacheRead: number
+  cacheWrite: number
+  total: number
+  rates: PricingRates
+  usesTieredPricing: boolean
+}
+
+const DEFAULT_PRICING: ModelPricing = { input: 1, output: 3, cacheWrite: 0, cacheRead: 0 }
 
 export class CostCalculator {
   constructor(private pricingData: Record<string, ModelPricing>) {}
@@ -9,6 +35,7 @@ export class CostCalculator {
     const fallbackPricingModelName = analysis.pricingModelName ?? analysis.model.name
     const perModelCosts = this.calculatePerModelCosts(analysis, fallbackPricingModelName)
     const pricing = this.getPricing(fallbackPricingModelName)
+    const defaultRates = this.selectPricingRates(pricing, analysis.inputTokens + analysis.cacheReadTokens + analysis.cacheWriteTokens)
     const hasActivity =
       analysis.apiCallCount > 0 &&
       (analysis.inputTokens > 0 ||
@@ -33,10 +60,10 @@ export class CostCalculator {
       estimatedOutputCost,
       estimatedCacheReadCost,
       estimatedCacheWriteCost,
-      pricePerMillionInput: pricing.input,
-      pricePerMillionOutput: pricing.output,
-      pricePerMillionCacheRead: pricing.cacheRead,
-      pricePerMillionCacheWrite: pricing.cacheWrite,
+      pricePerMillionInput: defaultRates.input,
+      pricePerMillionOutput: defaultRates.output,
+      pricePerMillionCacheRead: defaultRates.cacheRead,
+      pricePerMillionCacheWrite: defaultRates.cacheWrite,
       inputTokens: analysis.inputTokens,
       outputTokens: analysis.outputTokens,
       reasoningTokens: analysis.reasoningTokens,
@@ -52,28 +79,75 @@ export class CostCalculator {
 
     return usage.map((modelUsage) => {
       const pricingModelName = this.resolvePricingModelName(modelUsage, fallbackPricingModelName)
-      const pricing = this.getPricing(pricingModelName)
-      const estimatedInputCost = (modelUsage.inputTokens / 1_000_000) * pricing.input
-      const estimatedOutputCost = ((modelUsage.outputTokens + modelUsage.reasoningTokens) / 1_000_000) * pricing.output
-      const estimatedCacheReadCost = (modelUsage.cacheReadTokens / 1_000_000) * pricing.cacheRead
-      const estimatedCacheWriteCost = (modelUsage.cacheWriteTokens / 1_000_000) * pricing.cacheWrite
+      const components = this.calculateModelUsageComponents(modelUsage, pricingModelName)
 
       return {
         ...modelUsage,
         pricingModelName,
         hasPricing: this.hasPricing(pricingModelName),
-        estimatedSessionCost:
-          estimatedInputCost + estimatedOutputCost + estimatedCacheReadCost + estimatedCacheWriteCost,
-        estimatedInputCost,
-        estimatedOutputCost,
-        estimatedCacheReadCost,
-        estimatedCacheWriteCost,
-        pricePerMillionInput: pricing.input,
-        pricePerMillionOutput: pricing.output,
-        pricePerMillionCacheRead: pricing.cacheRead,
-        pricePerMillionCacheWrite: pricing.cacheWrite,
+        usesTieredPricing: components.usesTieredPricing,
+        estimatedSessionCost: components.total,
+        estimatedInputCost: components.input,
+        estimatedOutputCost: components.output,
+        estimatedCacheReadCost: components.cacheRead,
+        estimatedCacheWriteCost: components.cacheWrite,
+        pricePerMillionInput: components.rates.input,
+        pricePerMillionOutput: components.rates.output,
+        pricePerMillionCacheRead: components.rates.cacheRead,
+        pricePerMillionCacheWrite: components.rates.cacheWrite,
       }
     })
+  }
+
+  calculateModelUsageCost(modelUsage: ModelTokenUsage, fallbackPricingModelName: string): number {
+    const pricingModelName = this.resolvePricingModelName(modelUsage, fallbackPricingModelName)
+    return this.calculateModelUsageComponents(modelUsage, pricingModelName).total
+  }
+
+  private calculateModelUsageComponents(modelUsage: ModelTokenUsage, pricingModelName: string): CostComponents {
+    const pricing = this.getPricing(pricingModelName)
+    const calls = modelUsage.calls?.length ? modelUsage.calls : [this.asUsageCall(modelUsage)]
+    let input = 0
+    let output = 0
+    let cacheRead = 0
+    let cacheWrite = 0
+    let usesTieredPricing = false
+    let displayRates = this.selectPricingRates(pricing, this.rawContextTokens(this.asUsageCall(modelUsage)))
+
+    for (const call of calls) {
+      const rawContextTokens = this.rawContextTokens(call)
+      const rates = this.selectPricingRates(pricing, rawContextTokens)
+      input += (call.inputTokens / 1_000_000) * rates.input
+      output += ((call.outputTokens + call.reasoningTokens) / 1_000_000) * rates.output
+      cacheRead += (call.cacheReadTokens / 1_000_000) * rates.cacheRead
+      cacheWrite += (call.cacheWriteTokens / 1_000_000) * rates.cacheWrite
+      usesTieredPricing ||= this.usesNonBasePricing(pricing, rawContextTokens)
+      displayRates = rates
+    }
+
+    return {
+      input: this.safeCost(input),
+      output: this.safeCost(output),
+      cacheRead: this.safeCost(cacheRead),
+      cacheWrite: this.safeCost(cacheWrite),
+      total: this.safeCost(input + output + cacheRead + cacheWrite),
+      rates: displayRates,
+      usesTieredPricing,
+    }
+  }
+
+  private asUsageCall(usage: ModelTokenUsage): ModelTokenUsageCall {
+    return {
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      reasoningTokens: usage.reasoningTokens,
+      cacheReadTokens: usage.cacheReadTokens,
+      cacheWriteTokens: usage.cacheWriteTokens,
+    }
+  }
+
+  private rawContextTokens(usage: ModelTokenUsageCall): number {
+    return usage.inputTokens + usage.cacheReadTokens + usage.cacheWriteTokens
   }
 
   resolvePricingModelName(modelUsage: ModelTokenUsage, fallbackPricingModelName: string): string {
@@ -121,7 +195,7 @@ export class CostCalculator {
   }
 
   getPricing(modelName: string): ModelPricing {
-    return this.findPricing(modelName) ?? this.pricingData["default"] ?? { input: 1, output: 3, cacheWrite: 0, cacheRead: 0 }
+    return this.findPricing(modelName) ?? this.pricingData["default"] ?? DEFAULT_PRICING
   }
 
   hasPricing(modelName: string): boolean {
@@ -156,5 +230,63 @@ export class CostCalculator {
 
   private normalizeModelName(modelName: string): string {
     return modelName.includes("/") ? modelName.split("/").pop()?.trim().toLowerCase() || modelName : modelName.trim().toLowerCase()
+  }
+
+  private selectPricingRates(pricing: ModelPricing, rawContextTokens: number): PricingRates {
+    const contextTier = pricing.tiers
+      ?.filter((item) => item.tier.type === "context" && rawContextTokens > item.tier.size)
+      .sort((a, b) => b.tier.size - a.tier.size)[0]
+
+    if (contextTier) return this.ratesFromSnake(contextTier)
+
+    const over200k = pricing.experimentalOver200K ?? pricing.context_over_200k
+    if (over200k && rawContextTokens > 200_000) {
+      return "cacheRead" in over200k || "cacheWrite" in over200k
+        ? this.ratesFromCamel(over200k)
+        : this.ratesFromSnake(over200k)
+    }
+
+    return this.baseRates(pricing)
+  }
+
+  private usesNonBasePricing(pricing: ModelPricing, rawContextTokens: number): boolean {
+    const hasContextTier = pricing.tiers?.some((item) => item.tier.type === "context" && rawContextTokens > item.tier.size)
+    const hasOver200k = Boolean((pricing.experimentalOver200K ?? pricing.context_over_200k) && rawContextTokens > 200_000)
+    return Boolean(hasContextTier || (!hasContextTier && hasOver200k))
+  }
+
+  private baseRates(pricing: ModelPricing): PricingRates {
+    return {
+      input: this.safeRate(pricing.input),
+      output: this.safeRate(pricing.output),
+      cacheRead: this.safeRate(pricing.cacheRead ?? pricing.cache_read),
+      cacheWrite: this.safeRate(pricing.cacheWrite ?? pricing.cache_write),
+    }
+  }
+
+  private ratesFromSnake(pricing: { input: number; output: number; cache_read?: number; cache_write?: number }): PricingRates {
+    return {
+      input: this.safeRate(pricing.input),
+      output: this.safeRate(pricing.output),
+      cacheRead: this.safeRate(pricing.cache_read),
+      cacheWrite: this.safeRate(pricing.cache_write),
+    }
+  }
+
+  private ratesFromCamel(pricing: { input: number; output: number; cacheRead?: number; cacheWrite?: number }): PricingRates {
+    return {
+      input: this.safeRate(pricing.input),
+      output: this.safeRate(pricing.output),
+      cacheRead: this.safeRate(pricing.cacheRead),
+      cacheWrite: this.safeRate(pricing.cacheWrite),
+    }
+  }
+
+  private safeRate(value: unknown): number {
+    return typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : 0
+  }
+
+  private safeCost(value: number): number {
+    return Number.isFinite(value) ? Math.max(0, value) : 0
   }
 }

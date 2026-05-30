@@ -4,7 +4,7 @@ import type { Plugin } from "@opencode-ai/plugin"
 import { tool } from "@opencode-ai/plugin/tool"
 import path from "path"
 
-import type { SessionMessage } from "./tokenscope-lib/types.js"
+import type { SessionInfo, SessionMessage } from "./tokenscope-lib/types.js"
 import { DEFAULT_ENTRY_LIMIT, loadModelPricing, loadTokenscopeConfig } from "./tokenscope-lib/config.js"
 import { TokenizerManager } from "./tokenscope-lib/tokenizer.js"
 import { ModelResolver, ContentCollector, TokenAnalysisEngine } from "./tokenscope-lib/analyzer.js"
@@ -13,12 +13,13 @@ import { SubagentAnalyzer } from "./tokenscope-lib/subagent.js"
 import { OutputFormatter } from "./tokenscope-lib/formatter.js"
 import { ContextAnalyzer } from "./tokenscope-lib/context.js"
 import { SkillAnalyzer } from "./tokenscope-lib/skill.js"
-import { fetchSessionMessages, unwrapResponseData } from "./tokenscope-lib/opencode.js"
+import { fetchSessionMessages, tryFetchSessionInfo, unwrapResponseData } from "./tokenscope-lib/opencode.js"
 import { WarningCollector, formatErrorMessage } from "./tokenscope-lib/warnings.js"
 import { buildFailureReport, buildSuccessSummary, REPORT_FILENAME, writeReport } from "./tokenscope-lib/report.js"
 import {
   addModelSupportWarnings,
   addPerModelPricingWarnings,
+  applySessionInfoTotals,
   attachConfiguredAnalyses,
   resolveSessionID,
 } from "./tokenscope-lib/session-workflow.js"
@@ -70,7 +71,13 @@ export const TokenAnalyzerPlugin: Plugin = async ({ client, serverUrl, directory
           }
 
           try {
-            const response = await fetchSessionMessages(client, sessionID)
+            const [sessionInfoResponse, response] = await Promise.all([
+              tryFetchSessionInfo(client, sessionID),
+              fetchSessionMessages(client, sessionID),
+            ])
+            const sessionInfo = sessionInfoResponse
+              ? unwrapResponseData<SessionInfo | undefined>(sessionInfoResponse)
+              : undefined
             const messages: SessionMessage[] = unwrapResponseData<SessionMessage[]>(response ?? [])
 
             if (!Array.isArray(messages) || messages.length === 0) {
@@ -94,6 +101,7 @@ export const TokenAnalyzerPlugin: Plugin = async ({ client, serverUrl, directory
               args.limitMessages ?? DEFAULT_ENTRY_LIMIT
             )
             analysis.pricingModelName = pricingModelName
+            applySessionInfoTotals(analysis, sessionInfo)
 
             addPerModelPricingWarnings(warnings, costCalculator, analysis, pricingModelName)
             await attachConfiguredAnalyses({

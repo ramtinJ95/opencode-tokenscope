@@ -51,6 +51,14 @@ export interface TokenUsage {
   }
 }
 
+export interface SessionInfo {
+  id: string
+  title?: string
+  parentID?: string
+  tokens?: TokenUsage
+  cost?: number
+}
+
 export type SessionMessagePart =
   | { type: "text"; text: string; synthetic?: boolean }
   | { type: "reasoning"; text: string }
@@ -173,11 +181,21 @@ export interface ModelTokenUsage {
   apiCallCount: number
   callsWithCacheRead: number
   callsWithCacheWrite: number
+  calls?: ModelTokenUsageCall[]
+}
+
+export interface ModelTokenUsageCall {
+  inputTokens: number
+  outputTokens: number
+  reasoningTokens: number
+  cacheReadTokens: number
+  cacheWriteTokens: number
 }
 
 export interface ModelCostEstimate extends ModelTokenUsage {
   pricingModelName: string
   hasPricing: boolean
+  usesTieredPricing: boolean
   estimatedSessionCost: number
   estimatedInputCost: number
   estimatedOutputCost: number
@@ -361,12 +379,36 @@ export interface ModelPricing {
   output: number
   cacheWrite: number
   cacheRead: number
+  cache_write?: number
+  cache_read?: number
+  tiers?: ModelPricingTier[]
+  context_over_200k?: ModelPricingRatesSnake
+  experimentalOver200K?: ModelPricingRates
 }
 
-export interface ChildSession {
-  id: string
+export interface ModelPricingTier extends ModelPricingRatesSnake {
+  tier: {
+    type: "context"
+    size: number
+  }
+}
+
+export interface ModelPricingRates {
+  input: number
+  output: number
+  cacheWrite?: number
+  cacheRead?: number
+}
+
+export interface ModelPricingRatesSnake {
+  input: number
+  output: number
+  cache_write?: number
+  cache_read?: number
+}
+
+export interface ChildSession extends SessionInfo {
   title: string
-  parentID?: string
 }
 
 // Type guards

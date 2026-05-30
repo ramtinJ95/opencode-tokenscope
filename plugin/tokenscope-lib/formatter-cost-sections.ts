@@ -40,6 +40,26 @@ function formatSingleModelCostLines(cost: CostEstimate): string[] {
 
 function formatModelCostTokenLines(modelCost: ModelCostEstimate, indent: string): string[] {
   const lines: string[] = []
+  if (modelCost.usesTieredPricing) {
+    lines.push(
+      `${indent}Input tokens:      ${formatNumber(modelCost.inputTokens).padStart(10)} with context-tier pricing = $${modelCost.estimatedInputCost.toFixed(4)}`
+    )
+    lines.push(
+      `${indent}Output tokens:     ${formatNumber(modelCost.outputTokens + modelCost.reasoningTokens).padStart(10)} with context-tier pricing = $${modelCost.estimatedOutputCost.toFixed(4)}`
+    )
+    if (modelCost.cacheReadTokens > 0) {
+      lines.push(
+        `${indent}Cache read:        ${formatNumber(modelCost.cacheReadTokens).padStart(10)} with context-tier pricing = $${modelCost.estimatedCacheReadCost.toFixed(4)}`
+      )
+    }
+    if (modelCost.cacheWriteTokens > 0) {
+      lines.push(
+        `${indent}Cache write:       ${formatNumber(modelCost.cacheWriteTokens).padStart(10)} with context-tier pricing = $${modelCost.estimatedCacheWriteCost.toFixed(4)}`
+      )
+    }
+    return lines
+  }
+
   lines.push(
     `${indent}Input tokens:      ${formatNumber(modelCost.inputTokens).padStart(10)} × $${modelCost.pricePerMillionInput.toFixed(2)}/M  = $${modelCost.estimatedInputCost.toFixed(4)}`
   )

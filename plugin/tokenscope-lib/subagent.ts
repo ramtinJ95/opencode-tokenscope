@@ -1,6 +1,6 @@
 // SubagentAnalyzer - analyzes child sessions from Task tool calls
 
-import type { SessionMessage, SubagentSummary, SubagentAnalysis, ChildSession } from "./types.js"
+import type { SessionMessage, SubagentSummary, SubagentAnalysis, ChildSession, TokenUsage } from "./types.js"
 import { CostCalculator } from "./cost.js"
 import { fetchSessionChildren, fetchSessionMessages, unwrapResponseData } from "./opencode.js"
 import { summarizeTelemetry } from "./telemetry.js"
@@ -98,10 +98,17 @@ export class SubagentAnalyzer {
       const reasoningTokens = telemetry.reasoningTokens
       const cacheReadTokens = telemetry.cacheReadTokens
       const cacheWriteTokens = telemetry.cacheWriteTokens
-      const apiCost = telemetry.sessionCost
+      const sessionTokens = this.readSessionTokens(child.tokens)
+      const apiCost = this.safeNumber(child.cost) ?? telemetry.sessionCost
       const assistantMessageCount = telemetry.assistantMessageCount
       const apiCallCount = telemetry.apiCallCount
-      const totalTokens = inputTokens + outputTokens + reasoningTokens + cacheReadTokens + cacheWriteTokens
+      const finalInputTokens = sessionTokens?.inputTokens ?? inputTokens
+      const finalOutputTokens = sessionTokens?.outputTokens ?? outputTokens
+      const finalReasoningTokens = sessionTokens?.reasoningTokens ?? reasoningTokens
+      const finalCacheReadTokens = sessionTokens?.cacheReadTokens ?? cacheReadTokens
+      const finalCacheWriteTokens = sessionTokens?.cacheWriteTokens ?? cacheWriteTokens
+      const totalTokens =
+        finalInputTokens + finalOutputTokens + finalReasoningTokens + finalCacheReadTokens + finalCacheWriteTokens
       const fallbackPricingModelName = this.costCalculator.buildLookupKey(providerID, modelName) || modelName
       const estimatedCost = telemetry.perModelUsage.reduce((sum, modelUsage) => {
         const pricingModelName = this.costCalculator.resolvePricingModelName(modelUsage, fallbackPricingModelName)
@@ -111,25 +118,18 @@ export class SubagentAnalyzer {
             `missing-subagent-pricing:${pricingModelName}`
           )
         }
-        const pricing = this.costCalculator.getPricing(pricingModelName)
-        return (
-          sum +
-          (modelUsage.inputTokens / 1_000_000) * pricing.input +
-          ((modelUsage.outputTokens + modelUsage.reasoningTokens) / 1_000_000) * pricing.output +
-          (modelUsage.cacheReadTokens / 1_000_000) * pricing.cacheRead +
-          (modelUsage.cacheWriteTokens / 1_000_000) * pricing.cacheWrite
-        )
+        return sum + this.costCalculator.calculateModelUsageCost(modelUsage, fallbackPricingModelName)
       }, 0)
 
       return {
         sessionID: child.id,
         title: child.title,
         agentType,
-        inputTokens,
-        outputTokens,
-        reasoningTokens,
-        cacheReadTokens,
-        cacheWriteTokens,
+        inputTokens: finalInputTokens,
+        outputTokens: finalOutputTokens,
+        reasoningTokens: finalReasoningTokens,
+        cacheReadTokens: finalCacheReadTokens,
+        cacheWriteTokens: finalCacheWriteTokens,
         totalTokens,
         apiCost,
         estimatedCost,
@@ -150,5 +150,43 @@ export class SubagentAnalyzer {
     if (match) return match[1]
     const words = title.split(/\s+/)
     return words[0]?.toLowerCase() || "subagent"
+  }
+
+  private readSessionTokens(tokens: TokenUsage | undefined): {
+    inputTokens: number
+    outputTokens: number
+    reasoningTokens: number
+    cacheReadTokens: number
+    cacheWriteTokens: number
+  } | null {
+    if (!tokens) return null
+
+    const inputTokens = this.safeNumber(tokens.input)
+    const outputTokens = this.safeNumber(tokens.output)
+    const reasoningTokens = this.safeNumber(tokens.reasoning)
+    const cacheReadTokens = this.safeNumber(tokens.cache?.read)
+    const cacheWriteTokens = this.safeNumber(tokens.cache?.write)
+
+    if (
+      inputTokens === undefined &&
+      outputTokens === undefined &&
+      reasoningTokens === undefined &&
+      cacheReadTokens === undefined &&
+      cacheWriteTokens === undefined
+    ) {
+      return null
+    }
+
+    return {
+      inputTokens: inputTokens ?? 0,
+      outputTokens: outputTokens ?? 0,
+      reasoningTokens: reasoningTokens ?? 0,
+      cacheReadTokens: cacheReadTokens ?? 0,
+      cacheWriteTokens: cacheWriteTokens ?? 0,
+    }
+  }
+
+  private safeNumber(value: unknown): number | undefined {
+    return typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : undefined
   }
 }
