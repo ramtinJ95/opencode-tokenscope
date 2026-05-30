@@ -76,11 +76,16 @@ export class CostCalculator {
     })
   }
 
-  private resolvePricingModelName(modelUsage: ModelTokenUsage, fallbackPricingModelName: string): string {
-    const lookupKey = this.buildLookupKey(modelUsage.providerID, modelUsage.modelID)
-    if (lookupKey) return lookupKey
+  resolvePricingModelName(modelUsage: ModelTokenUsage, fallbackPricingModelName: string): string {
+    const providerID = modelUsage.providerID?.trim()
+    const modelID = modelUsage.modelID?.trim()
+    const lookupKey = this.buildLookupKey(providerID, modelID)
+
+    if (providerID && modelID) return lookupKey
+    if (lookupKey && this.hasPricing(lookupKey)) return lookupKey
 
     const modelName = modelUsage.modelName.trim()
+    if (modelName === lookupKey) return fallbackPricingModelName
     if (modelName && modelName !== "unknown model") return modelName
 
     return fallbackPricingModelName

@@ -93,6 +93,21 @@ test("summarizeTelemetry reads top-level scalar provider and model IDs", () => {
   expect(telemetry.perModelUsage[0]?.modelID).toBe("gpt-5.4-mini")
 })
 
+test("summarizeTelemetry prefers per-call data model over stale info model", () => {
+  const telemetry = summarizeTelemetry([
+    {
+      info: { role: "assistant", model: { providerID: "openai", modelID: "gpt-5.4" } },
+      data: { model: { providerID: "anthropic", modelID: "claude-sonnet-4-20250514" } },
+      tokens: { input: 1_000, output: 100, reasoning: 0, cache: { read: 500, write: 0 } },
+      cost: 0,
+    },
+  ])
+
+  expect(telemetry.perModelUsage).toHaveLength(1)
+  expect(telemetry.perModelUsage[0]?.providerID).toBe("anthropic")
+  expect(telemetry.perModelUsage[0]?.modelID).toBe("claude-sonnet-4-20250514")
+})
+
 test("ModelResolver reads scalar provider and model IDs from message data", () => {
   const resolver = new ModelResolver()
   const resolved = resolver.resolveModelAndProvider([
@@ -193,5 +208,40 @@ test("calculateCost uses the analysis pricing model when telemetry model metadat
 
   expect(cost.perModelCosts[0]?.pricingModelName).toBe("openai/gpt-5.4-mini")
   expect(cost.estimatedSessionCost).toBeCloseTo(0.0012)
+})
+
+test("calculateCost falls back when telemetry only has provider metadata", () => {
+  const calculator = new CostCalculator({
+    "openai/gpt-5.4-mini": { input: 0.75, output: 4.5, cacheWrite: 0, cacheRead: 0.075 },
+    default: { input: 1, output: 3, cacheWrite: 0, cacheRead: 0 },
+  })
+
+  const cost = calculator.calculateCost(
+    baseAnalysis({
+      pricingModelName: "openai/gpt-5.4-mini",
+      inputTokens: 1_000,
+      outputTokens: 100,
+      apiCallCount: 1,
+      perModelUsage: [
+        {
+          providerID: "openai",
+          modelName: "openai",
+          inputTokens: 1_000,
+          outputTokens: 100,
+          reasoningTokens: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          apiCost: 0,
+          apiCallCount: 1,
+          callsWithCacheRead: 0,
+          callsWithCacheWrite: 0,
+        },
+      ],
+    })
+  )
+
+  expect(cost.perModelCosts[0]?.pricingModelName).toBe("openai/gpt-5.4-mini")
+  expect(cost.estimatedSessionCost).toBeCloseTo(0.0012)
+  expect(cost.unknownPricingModels).toEqual([])
 })
 

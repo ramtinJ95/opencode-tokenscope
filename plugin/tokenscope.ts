@@ -150,7 +150,7 @@ export const TokenAnalyzerPlugin: Plugin = async ({ client, serverUrl, directory
             analysis.pricingModelName = pricingModelName
 
             for (const modelUsage of analysis.perModelUsage) {
-              const modelPricingName = costCalculator.buildLookupKey(modelUsage.providerID, modelUsage.modelID) || modelUsage.modelName
+              const modelPricingName = costCalculator.resolvePricingModelName(modelUsage, pricingModelName)
               if (!costCalculator.hasPricing(modelPricingName)) {
                 warnings.add(
                   `Pricing for '${modelPricingName}' was not found in models.json. Cost estimates for that model use the default fallback rates ($1/M input, $3/M output, no cache pricing).`,
