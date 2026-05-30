@@ -379,6 +379,51 @@ test("calculateCost uses base pricing when aggregate-only context is not known p
   expect(cost.estimatedSessionCost).toBeCloseTo(4.400001)
 })
 
+test("calculateCost displays the actual per-call rate used for one model", () => {
+  const calculator = new CostCalculator({
+    "provider/tiered-model": {
+      input: 1,
+      output: 10,
+      cacheRead: 0,
+      cacheWrite: 0,
+      context_over_200k: { input: 2, output: 20, cache_read: 0, cache_write: 0 },
+    },
+  })
+
+  const cost = calculator.calculateCost(
+    baseAnalysis({
+      pricingModelName: "provider/tiered-model",
+      inputTokens: 250_000,
+      outputTokens: 10_000,
+      apiCallCount: 2,
+      perModelUsage: [
+        {
+          providerID: "provider",
+          modelID: "tiered-model",
+          modelName: "provider/tiered-model",
+          inputTokens: 250_000,
+          outputTokens: 10_000,
+          reasoningTokens: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          apiCost: 0,
+          apiCallCount: 2,
+          callsWithCacheRead: 0,
+          callsWithCacheWrite: 0,
+          calls: [
+            { inputTokens: 125_000, outputTokens: 5_000, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+            { inputTokens: 125_000, outputTokens: 5_000, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+          ],
+        },
+      ],
+    })
+  )
+
+  expect(cost.perModelCosts[0]?.usesTieredPricing).toBe(false)
+  expect(cost.pricePerMillionInput).toBe(1)
+  expect(cost.pricePerMillionOutput).toBe(10)
+})
+
 test("applySessionInfoTotals prefers persisted OpenCode session aggregates", () => {
   const analysis = baseAnalysis({
     inputTokens: 1,

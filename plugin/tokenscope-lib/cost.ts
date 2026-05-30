@@ -36,7 +36,15 @@ export class CostCalculator {
     const fallbackPricingModelName = analysis.pricingModelName ?? analysis.model.name
     const perModelCosts = this.calculatePerModelCosts(analysis, fallbackPricingModelName)
     const pricing = this.getPricing(fallbackPricingModelName)
-    const defaultRates = this.selectPricingRates(pricing, analysis.inputTokens + analysis.cacheReadTokens + analysis.cacheWriteTokens)
+    const displayRates =
+      perModelCosts.length === 1
+        ? {
+            input: perModelCosts[0]!.pricePerMillionInput,
+            output: perModelCosts[0]!.pricePerMillionOutput,
+            cacheRead: perModelCosts[0]!.pricePerMillionCacheRead,
+            cacheWrite: perModelCosts[0]!.pricePerMillionCacheWrite,
+          }
+        : this.baseRates(pricing)
     const hasActivity =
       analysis.inputTokens > 0 ||
       analysis.outputTokens > 0 ||
@@ -60,10 +68,10 @@ export class CostCalculator {
       estimatedOutputCost,
       estimatedCacheReadCost,
       estimatedCacheWriteCost,
-      pricePerMillionInput: defaultRates.input,
-      pricePerMillionOutput: defaultRates.output,
-      pricePerMillionCacheRead: defaultRates.cacheRead,
-      pricePerMillionCacheWrite: defaultRates.cacheWrite,
+      pricePerMillionInput: displayRates.input,
+      pricePerMillionOutput: displayRates.output,
+      pricePerMillionCacheRead: displayRates.cacheRead,
+      pricePerMillionCacheWrite: displayRates.cacheWrite,
       inputTokens: analysis.inputTokens,
       outputTokens: analysis.outputTokens,
       reasoningTokens: analysis.reasoningTokens,
