@@ -3,6 +3,23 @@
 export interface SessionMessage {
   info: SessionMessageInfo
   parts: SessionMessagePart[]
+  data?: {
+    role?: string
+    model?: {
+      providerID?: string
+      modelID?: string
+      id?: string
+    }
+    providerID?: string
+    modelID?: string
+    tokens?: TokenUsage
+    cost?: number
+  }
+  model?: {
+    providerID?: string
+    modelID?: string
+    id?: string
+  }
 }
 
 export interface SessionMessageInfo {
@@ -12,6 +29,7 @@ export interface SessionMessageInfo {
   model?: {
     providerID?: string
     modelID?: string
+    id?: string
   }
   modelID?: string
   providerID?: string
@@ -93,6 +111,7 @@ export interface TokenAnalysis {
   mostRecentCost: number
   allToolsCalled: string[]
   toolCallCounts: Map<string, number>
+  perModelUsage: ModelTokenUsage[]
   warnings: string[]
   subagentAnalysis?: SubagentAnalysis
   // New context analysis fields
@@ -135,6 +154,37 @@ export interface CostEstimate {
   reasoningTokens: number
   cacheReadTokens: number
   cacheWriteTokens: number
+  perModelCosts: ModelCostEstimate[]
+  unknownPricingModels: string[]
+}
+
+export interface ModelTokenUsage {
+  providerID?: string
+  modelID?: string
+  modelName: string
+  inputTokens: number
+  outputTokens: number
+  reasoningTokens: number
+  cacheReadTokens: number
+  cacheWriteTokens: number
+  apiCost: number
+  apiCallCount: number
+  callsWithCacheRead: number
+  callsWithCacheWrite: number
+}
+
+export interface ModelCostEstimate extends ModelTokenUsage {
+  pricingModelName: string
+  hasPricing: boolean
+  estimatedSessionCost: number
+  estimatedInputCost: number
+  estimatedOutputCost: number
+  estimatedCacheReadCost: number
+  estimatedCacheWriteCost: number
+  pricePerMillionInput: number
+  pricePerMillionOutput: number
+  pricePerMillionCacheRead: number
+  pricePerMillionCacheWrite: number
 }
 
 export interface SubagentSummary {

@@ -122,11 +122,19 @@ export class ModelResolver {
   }
 
   private getProviderID(message: SessionMessage): string | undefined {
-    return message.info.providerID ?? message.info.model?.providerID
+    return message.info.providerID ?? message.info.model?.providerID ?? message.data?.model?.providerID ?? message.model?.providerID
   }
 
   private getModelID(message: SessionMessage): string | undefined {
-    return message.info.modelID ?? message.info.model?.modelID
+    return (
+      message.info.modelID ??
+      message.info.model?.modelID ??
+      message.info.model?.id ??
+      message.data?.model?.modelID ??
+      message.data?.model?.id ??
+      message.model?.modelID ??
+      message.model?.id
+    )
   }
 
   private canonicalize(value?: string): string | undefined {
@@ -344,6 +352,7 @@ export class TokenAnalysisEngine {
       mostRecentCost: 0,
       allToolsCalled,
       toolCallCounts,
+      perModelUsage: [],
       warnings: [],
     }
 
@@ -394,6 +403,7 @@ export class TokenAnalysisEngine {
     analysis.mostRecentCacheRead = telemetry.mostRecentCacheRead
     analysis.mostRecentCacheWrite = telemetry.mostRecentCacheWrite
     analysis.mostRecentProviderTotalTokens = telemetry.mostRecentProviderTotalTokens
+    analysis.perModelUsage = telemetry.perModelUsage
 
     const recentApiInputTotal = telemetry.mostRecentInput + telemetry.mostRecentCacheRead
     const localUserAndTools = analysis.categories.user.totalTokens + analysis.categories.tools.totalTokens
