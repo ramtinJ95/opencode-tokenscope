@@ -80,10 +80,15 @@ export function formatToolEstimates(estimates: ToolSchemaEstimate[]): string[] {
   const lines: string[] = []
   const enabledEstimates = estimates.filter((e) => e.enabled)
   const totalTokens = enabledEstimates.reduce((sum, e) => sum + e.estimatedTokens, 0)
+  const usesOpenCodeMetadata = enabledEstimates.some((estimate) => estimate.source === "opencode-api")
 
   lines.push(``)
   lines.push(`═══════════════════════════════════════════════════════════════════════════`)
-  lines.push(`TOOL DEFINITION COSTS (Estimated from argument analysis)`)
+  lines.push(
+    usesOpenCodeMetadata
+      ? `TOOL DEFINITION COSTS (Tokenized from OpenCode tool metadata)`
+      : `TOOL DEFINITION COSTS (Estimated from argument analysis)`
+  )
   lines.push(`─────────────────────────────────────────────────────────────────────────`)
   lines.push(``)
   lines.push(`  ${"Tool".padEnd(TOOL_ESTIMATE_LABEL_WIDTH)} ${"Est. Tokens".padStart(12)}   Args   Complexity`)
@@ -102,8 +107,13 @@ export function formatToolEstimates(estimates: ToolSchemaEstimate[]): string[] {
     `  Total:${" ".repeat(TOOL_ESTIMATE_LABEL_WIDTH - 6)} ~${formatNumber(totalTokens).padStart(11)} tokens (${enabledEstimates.length} enabled tools)`
   )
   lines.push(``)
-  lines.push(`  Note: Estimates inferred from tool call arguments in this session.`)
-  lines.push(`        Actual schema tokens may vary +/-20%.`)
+  if (usesOpenCodeMetadata) {
+    lines.push(`  Note: Tokenized from the current OpenCode tool descriptions and JSON schemas.`)
+    lines.push(`        Provider-specific schema wrapping may still add small overhead.`)
+  } else {
+    lines.push(`  Note: Estimates inferred from tool call arguments in this session.`)
+    lines.push(`        Actual schema tokens may vary +/-20%.`)
+  }
 
   return lines
 }

@@ -14,15 +14,26 @@ import type {
   ContextAnalysisResult,
 } from "./types.js"
 import { TokenizerManager } from "./tokenizer.js"
-import { firstCacheWriteTokens, summarizeTelemetry } from "./telemetry.js"
+import { collectTelemetryCalls, firstCacheWriteTokens, summarizeTelemetry } from "./telemetry.js"
 import { WarningCollector, formatErrorMessage } from "./warnings.js"
+import { fetchToolList, unwrapResponseData } from "./opencode.js"
+
+interface ToolListItem {
+  id: string
+  description?: string
+  parameters?: unknown
+  jsonSchema?: unknown
+}
 
 export class ContextAnalyzer {
   private tokenizerManager: TokenizerManager
+  private toolTokenCache = new WeakMap<ToolListItem, number>()
 
   constructor(
     tokenizerManager: TokenizerManager,
-    private warnings?: WarningCollector
+    private warnings?: WarningCollector,
+    private client?: any,
+    private directory?: string
   ) {
     this.tokenizerManager = tokenizerManager
   }
@@ -34,7 +45,9 @@ export class ContextAnalyzer {
     sessionID: string,
     tokenModel: TokenModel,
     pricing: ModelPricing,
-    config: TokenscopeConfig
+    config: TokenscopeConfig,
+    providerID?: string,
+    modelID?: string
   ): Promise<ContextAnalysisResult> {
     const result: ContextAnalysisResult = {}
 
@@ -42,12 +55,21 @@ export class ContextAnalyzer {
       const exported = await this.runExport(sessionID)
       if (!exported) return result
 
+      const shouldFetchToolDefinitions = config.enableContextBreakdown || config.enableToolSchemaEstimation
+      const cacheWriteModel = this.firstCacheWriteModel(exported)
+      const toolProviderID = cacheWriteModel.providerID ?? providerID
+      const toolModelID = cacheWriteModel.modelID ?? modelID
+      const toolDefinitions = shouldFetchToolDefinitions ? await this.getToolDefinitions(toolProviderID, toolModelID) : []
+      if (toolDefinitions.length > 0) {
+        await this.precomputeToolDefinitionTokens(toolDefinitions, tokenModel)
+      }
+
       if (config.enableContextBreakdown) {
-        result.contextBreakdown = await this.analyzeContextBreakdown(exported, tokenModel)
+        result.contextBreakdown = await this.analyzeContextBreakdown(exported, tokenModel, toolDefinitions)
       }
 
       if (config.enableToolSchemaEstimation) {
-        result.toolEstimates = this.estimateToolSchemas(exported)
+        result.toolEstimates = await this.estimateToolSchemas(exported, tokenModel, toolDefinitions)
       }
 
       if (config.enableCacheEfficiency) {
@@ -101,7 +123,8 @@ export class ContextAnalyzer {
    */
   private async analyzeContextBreakdown(
     exported: ExportedSession,
-    tokenModel: TokenModel
+    tokenModel: TokenModel,
+    toolDefinitions: ToolListItem[]
   ): Promise<ContextBreakdown> {
     const breakdown: ContextBreakdown = {
       baseSystemPrompt: { tokens: 0, identified: false },
@@ -112,16 +135,19 @@ export class ContextAnalyzer {
       totalCachedContext: 0,
     }
 
-    // Try to get system prompts from export (for future compatibility)
-    const systemPrompts = this.extractSystemPrompts(exported)
+    // OpenCode currently stores only explicit user-provided system overrides on
+    // messages, not the generated env/instructions/skills/tool prompt array.
+    // Only tokenize exported system content directly if it looks like generated
+    // OpenCode context; otherwise estimate from provider cache_write telemetry.
+    const systemPrompts = this.selectGeneratedSystemPrompts(this.extractSystemPrompts(exported))
 
     // If system prompts are available, analyze them directly
     if (systemPrompts.length > 0) {
-      return this.analyzeSystemPromptContent(exported, tokenModel, systemPrompts, breakdown)
+      return this.analyzeSystemPromptContent(exported, tokenModel, systemPrompts, breakdown, toolDefinitions)
     }
 
     // Default: Estimate from cache_write tokens
-    return this.estimateContextFromCacheTokens(exported, breakdown)
+    return this.estimateContextFromCacheTokens(exported, breakdown, toolDefinitions)
   }
 
   /**
@@ -131,7 +157,8 @@ export class ContextAnalyzer {
     exported: ExportedSession,
     tokenModel: TokenModel,
     systemPrompts: string[],
-    breakdown: ContextBreakdown
+    breakdown: ContextBreakdown,
+    toolDefinitions: ToolListItem[]
   ): Promise<ContextBreakdown> {
 
     for (const prompt of systemPrompts) {
@@ -258,6 +285,13 @@ export class ContextAnalyzer {
       breakdown.projectTree.tokens +
       breakdown.customInstructions.tokens
 
+    if (breakdown.toolDefinitions.tokens === 0 && toolDefinitions.length > 0) {
+      breakdown.toolDefinitions.tokens = this.sumPrecomputedToolTokens(toolDefinitions)
+      breakdown.toolDefinitions.toolCount = toolDefinitions.length
+      breakdown.toolDefinitions.identified = false
+      breakdown.totalCachedContext += breakdown.toolDefinitions.tokens
+    }
+
     return breakdown
   }
 
@@ -314,7 +348,8 @@ export class ContextAnalyzer {
    */
   private estimateContextFromCacheTokens(
     exported: ExportedSession,
-    breakdown: ContextBreakdown
+    breakdown: ContextBreakdown,
+    toolDefinitions: ToolListItem[]
   ): ContextBreakdown {
     // Find the first API call that wrote to cache to estimate total cached context size
     const totalCachedTokens = firstCacheWriteTokens(exported.messages)
@@ -322,14 +357,16 @@ export class ContextAnalyzer {
 
     // Count enabled tools from tool calls
     const enabledTools = this.extractEnabledTools(exported)
-    enabledToolCount = Object.keys(enabledTools).length
+    enabledToolCount = toolDefinitions.length || Object.values(enabledTools).filter(Boolean).length
 
     if (totalCachedTokens === 0) {
       return breakdown
     }
 
-    // Estimate tool definitions (~350 tokens per tool)
-    const estimatedToolTokens = enabledToolCount * 350
+    const measuredToolTokens = this.sumPrecomputedToolTokens(toolDefinitions)
+    // Prefer current OpenCode /experimental/tool metadata when available; fall
+    // back to a coarse per-tool estimate when only transcript data is present.
+    const estimatedToolTokens = measuredToolTokens || enabledToolCount * 350
     breakdown.toolDefinitions.tokens = estimatedToolTokens
     breakdown.toolDefinitions.toolCount = enabledToolCount
     breakdown.toolDefinitions.identified = false // Mark as estimated
@@ -356,7 +393,35 @@ export class ContextAnalyzer {
   /**
    * Estimate tool schema tokens from tool calls in the session
    */
-  private estimateToolSchemas(exported: ExportedSession): ToolSchemaEstimate[] {
+  private async estimateToolSchemas(
+    exported: ExportedSession,
+    tokenModel: TokenModel,
+    toolDefinitions: ToolListItem[]
+  ): Promise<ToolSchemaEstimate[]> {
+    if (toolDefinitions.length > 0) {
+      const estimates = await Promise.all(
+        toolDefinitions.map(async (definition) => {
+          const schema = this.toolSchema(definition)
+          const estimatedTokens =
+            this.toolTokenCache.get(definition) ??
+            (await this.tokenizerManager.countTokens(this.formatToolDefinition(definition), tokenModel))
+          this.setPrecomputedToolTokens(definition, estimatedTokens)
+
+          return {
+            name: definition.id,
+            enabled: true,
+            estimatedTokens,
+            argumentCount: this.countSchemaArguments(schema),
+            hasComplexArgs: this.hasComplexSchemaArguments(schema),
+            source: "opencode-api" as const,
+          }
+        })
+      )
+
+      estimates.sort((a, b) => b.estimatedTokens - a.estimatedTokens)
+      return estimates
+    }
+
     const enabledTools = this.extractEnabledTools(exported)
     const toolCallData = this.extractToolCallData(exported)
     const estimates: ToolSchemaEstimate[] = []
@@ -371,6 +436,7 @@ export class ContextAnalyzer {
         estimatedTokens: estimate.tokens,
         argumentCount: estimate.argCount,
         hasComplexArgs: estimate.hasComplex,
+        source: "transcript",
       })
     }
 
@@ -380,33 +446,161 @@ export class ContextAnalyzer {
     return estimates
   }
 
-  /**
-   * Extract enabled tools from user messages
-   */
-  private extractEnabledTools(exported: ExportedSession): Record<string, boolean> {
+  private async getToolDefinitions(providerID?: string, modelID?: string): Promise<ToolListItem[]> {
+    if (!this.client || !providerID || !modelID) {
+      return []
+    }
+
+    try {
+      const response = await fetchToolList(this.client, providerID, modelID, { directory: this.directory })
+      const tools = unwrapResponseData<ToolListItem[]>(response ?? [])
+      return Array.isArray(tools) ? tools.filter((tool) => typeof tool?.id === "string") : []
+    } catch (error) {
+      this.warnings?.add(
+        `Could not fetch tool definitions for ${providerID}/${modelID}. Tool schema sizes use transcript-based estimates: ${formatErrorMessage(error)}`,
+        `context-tool-list:${providerID}:${modelID}`
+      )
+      return []
+    }
+  }
+
+  private selectGeneratedSystemPrompts(prompts: string[]): string[] {
+    const strongPrompts = prompts.filter((prompt) => this.isStrongGeneratedSystemContext(prompt))
+    const hasBasePrompt = prompts.some((prompt) => this.isBaseGeneratedSystemPrompt(prompt))
+
+    if (strongPrompts.length === 0 || (strongPrompts.length === 1 && !hasBasePrompt)) {
+      return []
+    }
+
+    return prompts.filter(
+      (prompt) =>
+        this.isStrongGeneratedSystemContext(prompt) || this.isBaseGeneratedSystemPrompt(prompt) || this.isInstructionPrompt(prompt)
+    )
+  }
+
+  private isStrongGeneratedSystemContext(prompt: string): boolean {
+    const lower = prompt.toLowerCase()
+    return (
+      /<env>[\s\S]*?<\/env>/i.test(prompt) ||
+      /<available_skills>[\s\S]*?<\/available_skills>/i.test(prompt) ||
+      /<functions>[\s\S]*?<\/functions>/i.test(prompt) ||
+      (/^instructions from:\s*.+/im.test(prompt) &&
+        (lower.includes("agents.md") ||
+          lower.includes("claude.md") ||
+          lower.includes("context.md") ||
+          lower.includes("opencode"))) ||
+      lower.includes("available agent types and the tools they have access to") ||
+      lower.includes("skills provide specialized instructions and workflows")
+    )
+  }
+
+  private isBaseGeneratedSystemPrompt(prompt: string): boolean {
+    const lower = prompt.toLowerCase()
+    return (
+      lower.includes("you are opencode") ||
+      (prompt.length > 500 && lower.includes("assistant") && lower.includes("software engineering"))
+    )
+  }
+
+  private isInstructionPrompt(prompt: string): boolean {
+    return /^instructions from:\s*.+/im.test(prompt)
+  }
+
+  private toolSchema(tool: ToolListItem): unknown {
+    return tool.jsonSchema ?? tool.parameters
+  }
+
+  private formatToolDefinition(tool: ToolListItem): string {
+    const schema = this.toolSchema(tool)
+    return [
+      `<tool name="${tool.id}">`,
+      tool.description ? `<description>\n${tool.description}\n</description>` : undefined,
+      schema ? `<schema>\n${JSON.stringify(schema, null, 2)}\n</schema>` : undefined,
+      `</tool>`,
+    ]
+      .filter(Boolean)
+      .join("\n")
+  }
+
+  private countSchemaArguments(schema: unknown): number {
+    if (!schema || typeof schema !== "object") {
+      return 0
+    }
+
+    const properties = (schema as any).properties
+    return properties && typeof properties === "object" ? Object.keys(properties).length : 0
+  }
+
+  private hasComplexSchemaArguments(schema: unknown): boolean {
+    if (!schema || typeof schema !== "object") {
+      return false
+    }
+
+    const properties = (schema as any).properties
+    if (!properties || typeof properties !== "object") {
+      return false
+    }
+
+    return Object.values(properties).some((property) => {
+      if (!property || typeof property !== "object") return false
+      const type = (property as any).type
+      return type === "array" || type === "object" || !!(property as any).properties || !!(property as any).items
+    })
+  }
+
+  private sumPrecomputedToolTokens(tools: ToolListItem[]): number {
+    return tools.reduce((sum, tool) => sum + (this.toolTokenCache.get(tool) ?? 0), 0)
+  }
+
+  private setPrecomputedToolTokens(tool: ToolListItem, tokens: number): void {
+    this.toolTokenCache.set(tool, tokens)
+  }
+
+  private async precomputeToolDefinitionTokens(tools: ToolListItem[], tokenModel: TokenModel): Promise<void> {
+    await Promise.all(
+      tools.map(async (tool) => {
+        if (this.toolTokenCache.has(tool)) {
+          return
+        }
+
+        this.setPrecomputedToolTokens(tool, await this.tokenizerManager.countTokens(this.formatToolDefinition(tool), tokenModel))
+      })
+    )
+  }
+
+  private extractTranscriptTools(exported: ExportedSession): Record<string, boolean> {
     const tools: Record<string, boolean> = {}
 
     for (const message of exported.messages) {
-      // User messages may contain tools map in info
-      if (message.info.tools) {
-        for (const [name, enabled] of Object.entries(message.info.tools)) {
-          tools[name] = enabled
+      for (const part of message.parts) {
+        if (part.type === "tool" && part.tool) {
+          tools[part.tool] = true
         }
       }
     }
 
-    // Also collect from tool calls if tools map not available
     if (Object.keys(tools).length === 0) {
       for (const message of exported.messages) {
-        for (const part of message.parts) {
-          if (part.type === "tool" && part.tool) {
-            tools[part.tool] = true
-          }
+        if (!message.info.tools) continue
+        for (const [name, enabled] of Object.entries(message.info.tools)) {
+          if (enabled) tools[name] = true
         }
       }
     }
 
     return tools
+  }
+
+  private firstCacheWriteModel(exported: ExportedSession): { providerID?: string; modelID?: string } {
+    const call = collectTelemetryCalls(exported.messages).find((item) => item.cacheWriteTokens > 0)
+    return { providerID: call?.providerID, modelID: call?.modelID }
+  }
+
+  /**
+   * Extract enabled tools from user messages
+   */
+  private extractEnabledTools(exported: ExportedSession): Record<string, boolean> {
+    return this.extractTranscriptTools(exported)
   }
 
   /**

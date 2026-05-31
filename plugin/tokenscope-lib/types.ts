@@ -242,6 +242,7 @@ export interface ToolSchemaEstimate {
   estimatedTokens: number
   argumentCount: number
   hasComplexArgs: boolean
+  source?: "opencode-api" | "transcript"
 }
 
 // Skill analysis types

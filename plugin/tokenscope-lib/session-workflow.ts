@@ -87,7 +87,14 @@ export async function attachConfiguredAnalyses(input: {
   }
 
   const pricing = input.costCalculator.getPricing(input.pricingModelName)
-  const contextResult = await input.contextAnalyzer.analyze(input.sessionID, input.tokenModel, pricing, input.config)
+  const contextResult = await input.contextAnalyzer.analyze(
+    input.sessionID,
+    input.tokenModel,
+    pricing,
+    input.config,
+    input.providerID,
+    input.modelID
+  )
   applyContextAnalysis(input.analysis, contextResult)
 
   if (input.config.enableSkillAnalysis) {
