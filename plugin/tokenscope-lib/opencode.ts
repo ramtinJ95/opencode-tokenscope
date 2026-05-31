@@ -102,7 +102,7 @@ export async function fetchProviderList(client: any, routing: RoutingParams = {}
   const hasRouting = Object.keys(compactedRouting).length > 0
   const attempts: RequestAttempt[] = []
 
-  if (hasRouting && list.length >= 2) {
+  if (hasRouting) {
     attempts.push(() => list.call(client.provider, { ...compactedRouting }, { throwOnError: true }))
   }
 

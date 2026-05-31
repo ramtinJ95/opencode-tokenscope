@@ -187,6 +187,7 @@ test("fetchProviderList forwards directory routing through query parameters for 
   await fetchProviderList(client, { directory: "/tmp/project" })
 
   expect(calls).toEqual([
+    { directory: "/tmp/project" },
     { query: { directory: "/tmp/project" }, throwOnError: true },
   ])
 })

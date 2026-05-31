@@ -64,6 +64,18 @@ interface ProviderListData {
   all?: ProviderListProvider[]
 }
 
+type ProviderContextCost = {
+  input?: number
+  output?: number
+  cache?: {
+    read?: number
+    write?: number
+  }
+  cache_read?: number
+  cache_write?: number
+  threshold?: number
+}
+
 type LiveModelPricing = Partial<Omit<ModelPricing, "contextOver200k">> & {
   contextOver200k?: Partial<NonNullable<ModelPricing["contextOver200k"]>>
 }
@@ -121,11 +133,12 @@ export class ModelMetadataResolver {
       for (const [modelKey, model] of Object.entries(provider.models)) {
         if (!model.cost) continue
 
-        const modelID = model.id || modelKey
         const modelPricing = this.toModelPricing(model)
         if (!modelPricing) continue
 
-        pricing[this.buildPricingKey(provider.id, modelID)] = modelPricing
+        for (const modelID of new Set([model.id, modelKey].filter(Boolean))) {
+          pricing[this.buildPricingKey(provider.id, modelID!)] = modelPricing
+        }
       }
     }
 
@@ -148,25 +161,40 @@ export class ModelMetadataResolver {
       cacheRead,
       cacheWrite,
       contextWindow,
-      contextOver200k: contextOver200k
-        ? {
-            input: this.safeNumber(contextOver200k.input) ?? input,
-            output: this.safeNumber(contextOver200k.output) ?? output,
-            cacheRead: this.safeNumber(contextOver200k.cache?.read) ?? this.safeNumber(contextOver200k.cache_read) ?? cacheRead,
-            cacheWrite: this.safeNumber(contextOver200k.cache?.write) ?? this.safeNumber(contextOver200k.cache_write) ?? cacheWrite,
-          }
-        : undefined,
+      contextOver200k: contextOver200k ? this.toContextPricing(contextOver200k, input, output, cacheRead, cacheWrite) : undefined,
     }
   }
 
-  private extractContextOver200k(cost: NonNullable<ProviderListModel["cost"]>) {
-    if (cost.experimentalOver200K) return cost.experimentalOver200K
-    if (cost.context_over_200k) return cost.context_over_200k
+  private extractContextOver200k(cost: NonNullable<ProviderListModel["cost"]>): ProviderContextCost | undefined {
+    if (cost.experimentalOver200K) return { ...cost.experimentalOver200K }
+    if (cost.context_over_200k) return { ...cost.context_over_200k }
 
-    return cost.tiers
+    const tier = cost.tiers
       ?.filter((tier) => tier.tier?.type === "context" && this.safeNumber(tier.tier.size) !== undefined)
       .sort((a, b) => this.safeNumber(a.tier?.size)! - this.safeNumber(b.tier?.size)!)
       .find((tier) => this.safeNumber(tier.tier?.size)! >= 200_000)
+
+    if (!tier) return undefined
+    return { ...tier, threshold: this.safeNumber(tier.tier?.size) }
+  }
+
+  private toContextPricing(
+    contextCost: ProviderContextCost,
+    input: number | undefined,
+    output: number | undefined,
+    cacheRead: number | undefined,
+    cacheWrite: number | undefined
+  ): Partial<NonNullable<ModelPricing["contextOver200k"]>> {
+    const pricing: Partial<NonNullable<ModelPricing["contextOver200k"]>> = {
+      input: this.safeNumber(contextCost.input) ?? input,
+      output: this.safeNumber(contextCost.output) ?? output,
+      cacheRead: this.safeNumber(contextCost.cache?.read) ?? this.safeNumber(contextCost.cache_read) ?? cacheRead,
+      cacheWrite: this.safeNumber(contextCost.cache?.write) ?? this.safeNumber(contextCost.cache_write) ?? cacheWrite,
+    }
+
+    const threshold = this.safeNumber(contextCost.threshold)
+    if (threshold !== undefined && threshold !== 200_000) pricing.threshold = threshold
+    return pricing
   }
 
   private mergeModelPricing(base: ModelPricing | undefined, live: LiveModelPricing): ModelPricing {
@@ -197,12 +225,15 @@ export class ModelMetadataResolver {
   ): ModelPricing["contextOver200k"] {
     if (!base && !live) return undefined
 
-    return {
+    const merged: NonNullable<ModelPricing["contextOver200k"]> = {
       input: live?.input ?? base?.input ?? normalPricing.input,
       output: live?.output ?? base?.output ?? normalPricing.output,
       cacheRead: live?.cacheRead ?? base?.cacheRead ?? normalPricing.cacheRead,
       cacheWrite: live?.cacheWrite ?? base?.cacheWrite ?? normalPricing.cacheWrite,
     }
+    const threshold = live?.threshold ?? base?.threshold
+    if (threshold !== undefined) merged.threshold = threshold
+    return merged
   }
 
   private safeNumber(value: unknown): number | undefined {
