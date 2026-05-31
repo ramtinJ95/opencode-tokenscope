@@ -969,6 +969,44 @@ test("SubagentAnalyzer reports aggregate-only child sessions", async () => {
   expect(result.subagents[0]?.estimatedCost).toBeCloseTo(0.0028)
 })
 
+test("SubagentAnalyzer fetches aggregate-only child model metadata from session info", async () => {
+  const calculator = new CostCalculator({
+    "openai/gpt-5.4-mini": { input: 1, output: 3, cacheWrite: 2, cacheRead: 0.5 },
+  })
+  const analyzer = new SubagentAnalyzer(
+    {
+      session: {
+        children: async ({ path }: { path: { id?: string; sessionID?: string } }) => {
+          const id = path.id ?? path.sessionID
+          if (id === "ses_parent") {
+            return [
+              {
+                id: "ses_child",
+                title: "worker subagent",
+                tokens: { input: 1_000, output: 500, reasoning: 0, cache: { read: 200, write: 100 } },
+                cost: 0,
+              },
+            ]
+          }
+          return []
+        },
+        get: async ({ path }: { path: { id?: string; sessionID?: string } }) => {
+          const id = path.id ?? path.sessionID
+          if (id === "ses_child") return { id, title: "worker subagent", model: { providerID: "openai", id: "gpt-5.4-mini" } }
+          throw new Error(`unexpected session ${id}`)
+        },
+        messages: async () => [],
+      },
+    },
+    calculator
+  )
+
+  const result = await analyzer.analyzeChildSessions("ses_parent")
+
+  expect(result.subagents).toHaveLength(1)
+  expect(result.subagents[0]?.estimatedCost).toBeCloseTo(0.0028)
+})
+
 test("SubagentAnalyzer prices aggregate deltas from message data model metadata", async () => {
   const calculator = new CostCalculator({
     "openai/gpt-5.4-mini": { input: 1, output: 3, cacheWrite: 0, cacheRead: 0 },

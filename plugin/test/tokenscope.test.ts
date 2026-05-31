@@ -102,8 +102,7 @@ test.serial("reports persisted aggregate totals when session messages are empty"
     includeSubagents: false,
     sessionInfo: {
       id: "ses_current",
-      providerID: "openai",
-      modelID: "gpt-5.4-mini",
+      model: { providerID: "openai", id: "gpt-5.4-mini", variant: "default" },
       tokens: { input: 1_000, output: 500, reasoning: 25, cache: { read: 200, write: 100 } },
       cost: 0.0123,
     },
@@ -112,6 +111,11 @@ test.serial("reports persisted aggregate totals when session messages are empty"
   expect(summary).toContain("Token analysis complete!")
   expect(summary).toContain("Session telemetry total: 1,825")
   expect(report).toContain("Token Analysis: Session ses_current")
+  expect(report).toContain("Local Total: 1,825 tokens (from persisted session aggregate)")
+  expect(report).toContain("Note: no message content was available for local category analysis.")
+  expect(report).not.toContain("MOST RECENT API CALL")
+  expect(report).toContain("SESSION TOTALS (Persisted OpenCode aggregate)")
   expect(report).toContain("Input tokens:           1,000")
   expect(report).toContain("ACTUAL COST (from API):  $0.0123")
+  expect(report).not.toContain("Pricing for 'openai/gpt-5.4-mini' was not found")
 })

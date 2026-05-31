@@ -69,11 +69,11 @@ function emptyCategory(label: string) {
 }
 
 function sessionProviderID(sessionInfo: SessionInfo | undefined): string | undefined {
-  return sessionInfo?.providerID?.trim() || sessionInfo?.model?.providerID?.trim() || undefined
+  return sessionInfo?.model?.providerID?.trim() || sessionInfo?.providerID?.trim() || undefined
 }
 
 function sessionModelID(sessionInfo: SessionInfo | undefined): string | undefined {
-  return sessionInfo?.modelID?.trim() || sessionInfo?.model?.modelID?.trim() || sessionInfo?.model?.id?.trim() || undefined
+  return sessionInfo?.model?.id?.trim() || sessionInfo?.modelID?.trim() || undefined
 }
 
 export function hasSessionInfoAggregateActivity(sessionInfo: SessionInfo | undefined): boolean {
@@ -93,6 +93,7 @@ export function buildAggregateOnlyAnalysis(input: {
   const modelID = sessionModelID(input.sessionInfo)
   const sessionCost = safeTokenNumber(input.sessionInfo.cost) ?? 0
   const hasTokens = hasTokenActivity(buckets)
+  const totalTokens = totalTokenBuckets(buckets)
 
   return {
     sessionID: input.sessionID,
@@ -105,7 +106,7 @@ export function buildAggregateOnlyAnalysis(input: {
       tools: emptyCategory("tools"),
       reasoning: emptyCategory("reasoning"),
     },
-    totalTokens: 0,
+    totalTokens,
     inputTokens,
     outputTokens,
     reasoningTokens,

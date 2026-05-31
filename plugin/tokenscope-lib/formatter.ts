@@ -160,6 +160,8 @@ export class OutputFormatter {
     lines.push(``)
 
     const inputTotal = inputCategories.reduce((sum, cat) => sum + cat.tokens, 0)
+    const outputTotal = outputCategories.reduce((sum, cat) => sum + cat.tokens, 0)
+    const hasLocalCategoryTokens = inputTotal + outputTotal > 0
     lines.push(`Input Categories:`)
     for (const category of inputCategories) {
       const barLine = formatCategoryBar(category.label, category.tokens, inputTotal)
@@ -172,7 +174,6 @@ export class OutputFormatter {
     }
     lines.push(``)
 
-    const outputTotal = outputCategories.reduce((sum, cat) => sum + cat.tokens, 0)
     lines.push(`Output Categories:`)
     for (const category of outputCategories) {
       const barLine = formatCategoryBar(category.label, category.tokens, outputTotal)
@@ -181,7 +182,12 @@ export class OutputFormatter {
     lines.push(``)
     lines.push(`  Subtotal: ${formatNumber(outputTotal)} estimated output tokens`)
     lines.push(``)
-    lines.push(`Local Total: ${formatNumber(totalTokens)} tokens (estimated)`)
+    if (hasLocalCategoryTokens || totalTokens === 0) {
+      lines.push(`Local Total: ${formatNumber(totalTokens)} tokens (estimated)`)
+    } else {
+      lines.push(`Local Total: ${formatNumber(totalTokens)} tokens (from persisted session aggregate)`)
+      lines.push(`Note: no message content was available for local category analysis.`)
+    }
 
     // 2. TOOL USAGE BREAKDOWN (right after token breakdown)
     if (toolEntries.length > 0) {
@@ -212,36 +218,40 @@ export class OutputFormatter {
     }
 
     // 4. MOST RECENT API CALL
-    lines.push(``)
-    lines.push(`\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550`)
-    lines.push(`MOST RECENT API CALL`)
-    lines.push(`\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
-    lines.push(``)
-    lines.push(`Raw telemetry from last API response:`)
-    lines.push(`  Input (fresh):     ${formatNumber(mostRecentInput).padStart(10)} tokens`)
-    lines.push(`  Cache read:        ${formatNumber(mostRecentCacheRead).padStart(10)} tokens`)
-    if (mostRecentCacheWrite > 0) {
-      lines.push(`  Cache write:       ${formatNumber(mostRecentCacheWrite).padStart(10)} tokens`)
+    if (apiCallCount > 0) {
+      lines.push(``)
+      lines.push(`\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550`)
+      lines.push(`MOST RECENT API CALL`)
+      lines.push(`\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
+      lines.push(``)
+      lines.push(`Raw telemetry from last API response:`)
+      lines.push(`  Input (fresh):     ${formatNumber(mostRecentInput).padStart(10)} tokens`)
+      lines.push(`  Cache read:        ${formatNumber(mostRecentCacheRead).padStart(10)} tokens`)
+      if (mostRecentCacheWrite > 0) {
+        lines.push(`  Cache write:       ${formatNumber(mostRecentCacheWrite).padStart(10)} tokens`)
+      }
+      lines.push(`  Output:            ${formatNumber(mostRecentOutput).padStart(10)} tokens`)
+      if (mostRecentReasoning > 0) {
+        lines.push(`  Reasoning:         ${formatNumber(mostRecentReasoning).padStart(10)} tokens`)
+      }
+      if (mostRecentProviderTotalTokens !== undefined) {
+        lines.push(`  Provider total:    ${formatNumber(mostRecentProviderTotalTokens).padStart(10)} tokens`)
+      }
+      if (cost.apiMostRecentCost > 0) {
+        lines.push(`  Cost:              $${cost.apiMostRecentCost.toFixed(4)}`)
+      }
+      lines.push(`  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
+      lines.push(
+        `  Total:             ${formatNumber(mostRecentInput + mostRecentCacheRead + mostRecentCacheWrite + mostRecentOutput + mostRecentReasoning).padStart(10)} tokens`
+      )
     }
-    lines.push(`  Output:            ${formatNumber(mostRecentOutput).padStart(10)} tokens`)
-    if (mostRecentReasoning > 0) {
-      lines.push(`  Reasoning:         ${formatNumber(mostRecentReasoning).padStart(10)} tokens`)
-    }
-    if (mostRecentProviderTotalTokens !== undefined) {
-      lines.push(`  Provider total:    ${formatNumber(mostRecentProviderTotalTokens).padStart(10)} tokens`)
-    }
-    if (cost.apiMostRecentCost > 0) {
-      lines.push(`  Cost:              $${cost.apiMostRecentCost.toFixed(4)}`)
-    }
-    lines.push(`  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
-    lines.push(
-      `  Total:             ${formatNumber(mostRecentInput + mostRecentCacheRead + mostRecentCacheWrite + mostRecentOutput + mostRecentReasoning).padStart(10)} tokens`
-    )
 
     // 5. SESSION TOTALS
     lines.push(``)
     lines.push(`\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550`)
-    lines.push(`SESSION TOTALS (All ${apiCallCount} API calls)`)
+    lines.push(
+      apiCallCount > 0 ? `SESSION TOTALS (All ${apiCallCount} API calls)` : `SESSION TOTALS (Persisted OpenCode aggregate)`
+    )
     lines.push(`\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
     lines.push(``)
     if (assistantMessageCount !== apiCallCount) {

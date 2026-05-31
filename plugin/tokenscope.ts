@@ -106,8 +106,8 @@ export const TokenAnalyzerPlugin: Plugin = async ({ client, serverUrl, directory
                       info: {
                         id: sessionID,
                         role: "assistant",
-                        providerID: sessionInfo.providerID ?? sessionInfo.model?.providerID,
-                        modelID: sessionInfo.modelID ?? sessionInfo.model?.modelID ?? sessionInfo.model?.id,
+                        providerID: sessionInfo.model?.providerID ?? sessionInfo.providerID,
+                        modelID: sessionInfo.model?.id ?? sessionInfo.modelID,
                       },
                       parts: [],
                     },

@@ -2,7 +2,7 @@
 
 import type { SessionMessage, SubagentSummary, SubagentAnalysis, ChildSession } from "./types.js"
 import { CostCalculator } from "./cost.js"
-import { fetchSessionChildren, fetchSessionMessages, unwrapResponseData } from "./opencode.js"
+import { fetchSessionChildren, fetchSessionMessages, tryFetchSessionInfo, unwrapResponseData } from "./opencode.js"
 import { summarizeTelemetry } from "./telemetry.js"
 import {
   hasLowerAggregateBucket,
@@ -87,9 +87,10 @@ export class SubagentAnalyzer {
 
       if (!Array.isArray(messages)) return null
 
-      const agentType = this.extractAgentType(child.title)
+      const effectiveChild = await this.resolveEffectiveChildSession(child, messages)
+      const agentType = this.extractAgentType(effectiveChild.title)
       const telemetry = summarizeTelemetry(messages)
-      const { providerID, modelName } = this.resolveChildModel(child, messages)
+      const { providerID, modelName } = this.resolveChildModel(effectiveChild, messages)
 
       const telemetryTokens = {
         inputTokens: telemetry.inputTokens,
@@ -98,7 +99,7 @@ export class SubagentAnalyzer {
         cacheReadTokens: telemetry.cacheReadTokens,
         cacheWriteTokens: telemetry.cacheWriteTokens,
       }
-      const sessionTokens = readTokenBuckets(child.tokens)
+      const sessionTokens = readTokenBuckets(effectiveChild.tokens)
       const sessionTokensHaveActivity = hasTokenActivity(sessionTokens)
       const telemetryHasActivity = hasTokenActivity(telemetryTokens) || telemetry.sessionCost > 0
       const sessionTokensAreConsistent = sessionTokens ? !hasLowerAggregateBucket(sessionTokens, telemetryTokens) : true
@@ -106,7 +107,7 @@ export class SubagentAnalyzer {
         sessionTokens && sessionTokensAreConsistent && (sessionTokensHaveActivity || !telemetryHasActivity)
           ? sessionTokens
           : null
-      const childCost = safeTokenNumber(child.cost)
+      const childCost = safeTokenNumber(effectiveChild.cost)
       const childCostIsConsistent = childCost === undefined || telemetry.sessionCost === 0 || childCost >= telemetry.sessionCost
       const apiCost =
         childCost !== undefined && childCostIsConsistent && (childCost > 0 || !telemetryHasActivity)
@@ -138,8 +139,8 @@ export class SubagentAnalyzer {
       }, 0)
 
       return {
-        sessionID: child.id,
-        title: child.title,
+        sessionID: effectiveChild.id,
+        title: effectiveChild.title,
         agentType,
         inputTokens: finalTokens.inputTokens,
         outputTokens: finalTokens.outputTokens,
@@ -161,6 +162,32 @@ export class SubagentAnalyzer {
     }
   }
 
+  private async resolveEffectiveChildSession(child: ChildSession, messages: SessionMessage[]): Promise<ChildSession> {
+    if (messages.length > 0 || this.hasChildModelMetadata(child)) return child
+
+    const response = await tryFetchSessionInfo(this.client, child.id)
+    const sessionInfo = unwrapResponseData<Partial<ChildSession> | undefined>(response)
+    if (!sessionInfo) return child
+
+    return {
+      ...sessionInfo,
+      ...child,
+      title: child.title ?? sessionInfo.title ?? "subagent",
+      model: child.model ?? sessionInfo.model,
+      providerID: child.providerID ?? sessionInfo.providerID,
+      modelID: child.modelID ?? sessionInfo.modelID,
+      tokens: child.tokens ?? sessionInfo.tokens,
+      cost: child.cost ?? sessionInfo.cost,
+    }
+  }
+
+  private hasChildModelMetadata(child: ChildSession): boolean {
+    return Boolean(
+      this.normalizeString(child.model?.providerID ?? child.providerID) &&
+        this.normalizeString(child.model?.id ?? child.modelID)
+    )
+  }
+
   private extractAgentType(title: string): string {
     const match = title.match(/@([A-Za-z0-9._-]+)\s+subagent/i)
     if (match) return match[1]
@@ -170,7 +197,7 @@ export class SubagentAnalyzer {
 
   private resolveChildModel(child: ChildSession, messages: SessionMessage[]): { providerID: string; modelName: string } {
     let providerID = this.normalizeString(child.providerID ?? child.model?.providerID) ?? ""
-    let modelName = this.normalizeString(child.modelID ?? child.model?.modelID ?? child.model?.id) ?? "unknown"
+    let modelName = this.normalizeString(child.model?.id ?? child.modelID) ?? "unknown"
 
     for (const message of messages) {
       if (message.info.role !== "assistant") continue
