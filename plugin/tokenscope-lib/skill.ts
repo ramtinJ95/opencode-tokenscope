@@ -14,6 +14,7 @@ import type {
 import { isToolPart } from "./types.js"
 import { TokenizerManager } from "./tokenizer.js"
 import { WarningCollector, formatErrorMessage } from "./warnings.js"
+import { fetchToolList, unwrapResponseData } from "./opencode.js"
 
 interface ToolListItem {
   id: string
@@ -35,7 +36,7 @@ interface RemoteAgent {
 
 interface RemoteSkill {
   name: string
-  description: string
+  description?: string
   location?: string
 }
 
@@ -116,14 +117,8 @@ export class SkillAnalyzer {
    */
   private async listTools(providerID: string, modelID: string): Promise<ToolListItem[]> {
     try {
-      const response = await this.client.tool.list({
-        query: {
-          provider: providerID,
-          model: modelID,
-        },
-      })
-
-      const tools = (response as any)?.data ?? response ?? []
+      const response = await fetchToolList(this.client, providerID, modelID, { directory: this.directory })
+      const tools = unwrapResponseData<ToolListItem[]>(response ?? [])
       return Array.isArray(tools) ? (tools as ToolListItem[]) : []
     } catch (error) {
       this.warnings?.add(
@@ -150,7 +145,9 @@ export class SkillAnalyzer {
 
     try {
       if (availableSkills) {
-        const sortedSkills = [...availableSkills].sort((a, b) => a.name.localeCompare(b.name))
+        const sortedSkills = availableSkills
+          .filter((skill): skill is RemoteSkill & { description: string } => typeof skill.description === "string")
+          .sort((a, b) => a.name.localeCompare(b.name))
         const skillToolDescription = this.buildSkillToolDescription(sortedSkills)
         descriptionTokens = await this.tokenizerManager.countTokens(skillToolDescription, tokenModel)
 
