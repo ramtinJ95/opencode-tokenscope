@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.5] - 2026-05-31
+
+### Changed
+
+- Aligned TokenScope's OpenCode SDK calls with current session, child-session, and experimental tool endpoint request shapes.
+- Improved context breakdown and tool schema accounting by using current OpenCode tool metadata, workspace-routed tool definitions, generated prompt detection, and cache-write model selection.
+- Updated skill and subagent analysis for current OpenCode skill metadata, optional skill descriptions, and directory-scoped tool definitions.
+
+### Fixed
+
+- Avoided treating user-supplied system overrides as generated OpenCode context unless they match stronger generated-context markers.
+- Stopped using current OpenCode `info.tools` permission overrides to hide model-visible tool definitions.
+
 ## [1.6.4] - 2026-05-20
 
 ### Added
@@ -104,7 +117,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Synced READMEs and removed version tags from feature headers
 - Updated install script for better testing before npm push
 
-[Unreleased]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.6.4...HEAD
+[Unreleased]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.6.5...HEAD
+[1.6.5]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.6.4...v1.6.5
 [1.6.4]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.6.3...v1.6.4
 [1.6.3]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.6.2...v1.6.3
 [1.6.2]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.6.1...v1.6.2
