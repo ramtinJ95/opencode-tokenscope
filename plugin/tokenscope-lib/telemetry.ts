@@ -196,6 +196,7 @@ function summarizeCallsByModel(calls: TelemetryCall[]): ModelTokenUsage[] {
       apiCallCount: 0,
       callsWithCacheRead: 0,
       callsWithCacheWrite: 0,
+      costSegments: [],
     }
 
     existing.inputTokens += call.inputTokens
@@ -207,6 +208,14 @@ function summarizeCallsByModel(calls: TelemetryCall[]): ModelTokenUsage[] {
     existing.apiCallCount += 1
     if (call.cacheReadTokens > 0) existing.callsWithCacheRead += 1
     if (call.cacheWriteTokens > 0) existing.callsWithCacheWrite += 1
+    existing.costSegments?.push({
+      inputTokens: call.inputTokens,
+      outputTokens: call.outputTokens,
+      reasoningTokens: call.reasoningTokens,
+      cacheReadTokens: call.cacheReadTokens,
+      cacheWriteTokens: call.cacheWriteTokens,
+      apiCallCount: 1,
+    })
 
     byModel.set(key, existing)
   }
