@@ -385,6 +385,7 @@ export interface ModelPricing {
     output: number
     cacheWrite: number
     cacheRead: number
+    threshold?: number
   }
 }
 

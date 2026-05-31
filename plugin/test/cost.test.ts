@@ -271,6 +271,71 @@ test("calculateCost applies over 200k pricing per API call instead of aggregated
   expect(cost.perModelCosts[0]?.pricingTier).toBeUndefined()
 })
 
+test("calculateCost uses custom context tier thresholds from live metadata", () => {
+  const calculator = new CostCalculator({
+    "provider/model": {
+      input: 1,
+      output: 2,
+      cacheRead: 0.1,
+      cacheWrite: 1,
+      contextOver200k: { input: 3, output: 6, cacheRead: 0.3, cacheWrite: 3, threshold: 400_000 },
+    },
+    default: { input: 1, output: 3, cacheWrite: 0, cacheRead: 0 },
+  })
+
+  const belowThreshold = calculator.calculateCost(
+    baseAnalysis({
+      pricingModelName: "provider/model",
+      inputTokens: 250_000,
+      apiCallCount: 1,
+      perModelUsage: [
+        {
+          providerID: "provider",
+          modelID: "model",
+          modelName: "provider/model",
+          inputTokens: 250_000,
+          outputTokens: 0,
+          reasoningTokens: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          apiCost: 0,
+          apiCallCount: 1,
+          callsWithCacheRead: 0,
+          callsWithCacheWrite: 0,
+        },
+      ],
+    })
+  )
+  const aboveThreshold = calculator.calculateCost(
+    baseAnalysis({
+      pricingModelName: "provider/model",
+      inputTokens: 450_000,
+      apiCallCount: 1,
+      perModelUsage: [
+        {
+          providerID: "provider",
+          modelID: "model",
+          modelName: "provider/model",
+          inputTokens: 450_000,
+          outputTokens: 0,
+          reasoningTokens: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          apiCost: 0,
+          apiCallCount: 1,
+          callsWithCacheRead: 0,
+          callsWithCacheWrite: 0,
+        },
+      ],
+    })
+  )
+
+  expect(belowThreshold.estimatedSessionCost).toBeCloseTo(0.25)
+  expect(belowThreshold.perModelCosts[0]?.pricingTier).toBeUndefined()
+  expect(aboveThreshold.estimatedSessionCost).toBeCloseTo(1.35)
+  expect(aboveThreshold.perModelCosts[0]?.pricingTier).toBe("context_over_200k")
+})
+
 test("calculateCost reports effective blended rates for mixed context tiers", () => {
   const calculator = new CostCalculator({
     "anthropic/claude-sonnet-4-20250514": {

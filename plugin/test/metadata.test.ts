@@ -110,6 +110,77 @@ test("ModelMetadataResolver reads current OpenCode nested cache and tier pricing
   })
 })
 
+test("ModelMetadataResolver preserves non-200K context tier thresholds", async () => {
+  const client = {
+    provider: {
+      async list() {
+        return {
+          all: [
+            {
+              id: "provider",
+              models: {
+                model: {
+                  id: "model",
+                  cost: {
+                    input: 1,
+                    output: 2,
+                    cache: { read: 0.1, write: 1 },
+                    tiers: [
+                      {
+                        input: 3,
+                        output: 6,
+                        cache: { read: 0.3, write: 3 },
+                        tier: { type: "context", size: 400_000 },
+                      },
+                    ],
+                  },
+                },
+              },
+            },
+          ],
+        }
+      },
+    },
+  }
+
+  const pricing = await new ModelMetadataResolver(client).mergePricingData({})
+
+  expect(pricing["provider/model"]?.contextOver200k).toEqual({
+    input: 3,
+    output: 6,
+    cacheRead: 0.3,
+    cacheWrite: 3,
+    threshold: 400_000,
+  })
+})
+
+test("ModelMetadataResolver indexes live pricing by both provider model key and API model id", async () => {
+  const client = {
+    provider: {
+      async list() {
+        return {
+          all: [
+            {
+              id: "openai-compatible",
+              models: {
+                configuredAlias: {
+                  id: "api-model-id",
+                  cost: { input: 2, output: 8, cache: { read: 0.2, write: 2 } },
+                },
+              },
+            },
+          ],
+        }
+      },
+    },
+  }
+
+  const pricing = await new ModelMetadataResolver(client).mergePricingData({})
+
+  expect(pricing["openai-compatible/configuredalias"]).toMatchObject({ input: 2, output: 8, cacheRead: 0.2, cacheWrite: 2 })
+  expect(pricing["openai-compatible/api-model-id"]).toMatchObject({ input: 2, output: 8, cacheRead: 0.2, cacheWrite: 2 })
+})
+
 test("ModelMetadataResolver prefers current OpenCode experimentalOver200K pricing", async () => {
   const client = {
     provider: {

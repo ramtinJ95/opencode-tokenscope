@@ -175,7 +175,7 @@ export class CostCalculator {
 
   private selectPricingRate(modelUsage: PriceableTokenUsage, pricing: ModelPricing): ModelPricing {
     const contextTokens = modelUsage.inputTokens + modelUsage.cacheReadTokens + modelUsage.cacheWriteTokens
-    if (pricing.contextOver200k && contextTokens > 200_000) return pricing.contextOver200k
+    if (pricing.contextOver200k && contextTokens > (pricing.contextOver200k.threshold ?? 200_000)) return pricing.contextOver200k
     return pricing
   }
 
