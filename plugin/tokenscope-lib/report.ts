@@ -18,6 +18,11 @@ export async function writeReport(outputPath: string, output: string): Promise<s
   }
 }
 
+function shellSingleQuote(value: string): string {
+  const escaped = value.replace(/'/g, "'\\''")
+  return `'${escaped}'`
+}
+
 export function buildFailureReport(sessionID: string | undefined, warnings: string[], fatalMessage: string): string {
   const lines: string[] = []
   const timestamp = new Date().toISOString()
@@ -77,7 +82,7 @@ export function buildSuccessSummary(outputPath: string, analysis: TokenAnalysis)
     summaryMsg += `\nWarnings: ${analysis.warnings.length} (see report for details)`
   }
 
-  summaryMsg += `\n\nUse: cat ${REPORT_FILENAME} (or read the file) to view the complete analysis.`
+  summaryMsg += `\n\nUse: cat ${shellSingleQuote(outputPath)} (or read the file) to view the complete analysis.`
 
   return summaryMsg
 }
