@@ -31,7 +31,7 @@ export function addModelSupportWarnings(
 
   if (!costCalculator.hasPricing(pricingModelName)) {
     warnings.add(
-      `Pricing for '${pricingModelName}' was not found in models.json. Cost estimates use the default fallback rates ($1/M input, $3/M output, no cache pricing).`,
+      `Pricing for '${pricingModelName}' was not found in OpenCode metadata or models.json. Cost estimates use the default fallback rates ($1/M input, $3/M output, no cache pricing).`,
       `missing-pricing:${pricingModelName}`
     )
   }
@@ -47,7 +47,7 @@ export function addPerModelPricingWarnings(
     const modelPricingName = costCalculator.resolvePricingModelName(modelUsage, fallbackPricingModelName)
     if (!costCalculator.hasPricing(modelPricingName)) {
       warnings.add(
-        `Pricing for '${modelPricingName}' was not found in models.json. Cost estimates for that model use the default fallback rates ($1/M input, $3/M output, no cache pricing).`,
+        `Pricing for '${modelPricingName}' was not found in OpenCode metadata or models.json. Cost estimates for that model use the default fallback rates ($1/M input, $3/M output, no cache pricing).`,
         `missing-pricing:${modelPricingName}`
       )
     }
