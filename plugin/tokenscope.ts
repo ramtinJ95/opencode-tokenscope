@@ -14,6 +14,7 @@ import { OutputFormatter } from "./tokenscope-lib/formatter.js"
 import { ContextAnalyzer } from "./tokenscope-lib/context.js"
 import { SkillAnalyzer } from "./tokenscope-lib/skill.js"
 import { fetchSessionMessages, unwrapResponseData } from "./tokenscope-lib/opencode.js"
+import { ModelMetadataResolver } from "./tokenscope-lib/metadata.js"
 import { WarningCollector, formatErrorMessage } from "./tokenscope-lib/warnings.js"
 import { buildFailureReport, buildSuccessSummary, REPORT_FILENAME, writeReport } from "./tokenscope-lib/report.js"
 import {
@@ -29,7 +30,6 @@ export const TokenAnalyzerPlugin: Plugin = async ({ client, serverUrl, directory
 
   const modelResolver = new ModelResolver()
   const contentCollector = new ContentCollector()
-  const costCalculator = new CostCalculator(pricingData)
 
   return {
     tool: {
@@ -49,15 +49,14 @@ export const TokenAnalyzerPlugin: Plugin = async ({ client, serverUrl, directory
             .describe("Include token costs from subagent child sessions (default: true)"),
         },
         async execute(args, context) {
-          const outputPath = path.join(process.cwd(), REPORT_FILENAME)
+          const sessionDirectory = context.directory || directory || process.cwd()
+          const outputPath = path.join(sessionDirectory, REPORT_FILENAME)
           const warnings = new WarningCollector()
           const tokenizerManager = new TokenizerManager(warnings)
           const analysisEngine = new TokenAnalysisEngine(tokenizerManager, contentCollector)
-          const subagentAnalyzer = new SubagentAnalyzer(client, costCalculator, warnings)
-          const contextAnalyzer = new ContextAnalyzer(tokenizerManager, warnings, client, directory)
-          const skillAnalyzer = new SkillAnalyzer(client, tokenizerManager, serverUrl, directory, warnings)
-          const formatter = new OutputFormatter(costCalculator)
-          formatter.setConfig(config)
+          const routing = { directory: sessionDirectory }
+          const contextAnalyzer = new ContextAnalyzer(tokenizerManager, warnings, client, sessionDirectory)
+          const skillAnalyzer = new SkillAnalyzer(client, tokenizerManager, serverUrl, sessionDirectory, warnings)
 
           const sessionID = resolveSessionID(args.sessionID, context.sessionID)
           if (!sessionID) {
@@ -70,7 +69,7 @@ export const TokenAnalyzerPlugin: Plugin = async ({ client, serverUrl, directory
           }
 
           try {
-            const response = await fetchSessionMessages(client, sessionID)
+            const response = await fetchSessionMessages(client, sessionID, routing)
             const messages: SessionMessage[] = unwrapResponseData<SessionMessage[]>(response ?? [])
 
             if (!Array.isArray(messages) || messages.length === 0) {
@@ -83,6 +82,11 @@ export const TokenAnalyzerPlugin: Plugin = async ({ client, serverUrl, directory
             }
 
             const { model: tokenModel, providerID, modelID } = modelResolver.resolveModelAndProvider(messages)
+            const metadataResolver = new ModelMetadataResolver(client, routing, warnings)
+            const costCalculator = new CostCalculator(await metadataResolver.mergePricingData(pricingData))
+            const subagentAnalyzer = new SubagentAnalyzer(client, costCalculator, warnings, routing)
+            const formatter = new OutputFormatter(costCalculator)
+            formatter.setConfig(config)
             const pricingModelName = costCalculator.buildLookupKey(providerID, modelID) || tokenModel.name
 
             addModelSupportWarnings(warnings, costCalculator, tokenModel, providerID, modelID, pricingModelName)

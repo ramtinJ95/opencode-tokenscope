@@ -103,8 +103,7 @@ Per-model estimated API pricing:
 ─────────────────────────────────────────────────────────────────────────
 ACTUAL COST (from API):  $0.0456
 
-Note: Actual cost from OpenCode includes provider-specific pricing
-and 200K+ context adjustments.
+Note: Actual cost is OpenCode-recorded provider cost. Estimates use live OpenCode model metadata when available, then bundled models.json pricing.
 
 ═══════════════════════════════════════════════════════════════════════════
 CONTEXT BREAKDOWN (Estimated from cache_write tokens)

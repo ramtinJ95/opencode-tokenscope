@@ -279,7 +279,7 @@ export class OutputFormatter {
       lines.push(`\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
       lines.push(`ESTIMATED TOTAL: $${cost.estimatedSessionCost.toFixed(4)}`)
       lines.push(``)
-      lines.push(`Note: This estimate uses standard API pricing from models.json.`)
+      lines.push(`Note: This estimate uses live OpenCode model metadata when available, then bundled models.json pricing.`)
       lines.push(`Actual API costs may vary based on provider and context size.`)
     } else {
       lines.push(`SESSION COST`)
@@ -313,8 +313,7 @@ export class OutputFormatter {
         )
       }
       lines.push(``)
-      lines.push(`Note: Actual cost from OpenCode includes provider-specific pricing`)
-      lines.push(`and 200K+ context adjustments.`)
+      lines.push(`Note: Actual cost is OpenCode-recorded provider cost. Estimates use live OpenCode model metadata when available, then bundled models.json pricing.`)
     }
 
     // 7. CONTEXT BREAKDOWN (if enabled and available)
