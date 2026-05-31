@@ -34,14 +34,14 @@
   "author": "ramtinj95",
   "license": "MIT",
   "peerDependencies": {
-    "@opencode-ai/plugin": ">=0.13.7"
+    "@opencode-ai/plugin": ">=1.1.48"
   },
   "dependencies": {
     "@huggingface/tokenizers": "^0.1.3",
     "js-tiktoken": "^1.0.15"
   },
   "devDependencies": {
-    "@opencode-ai/plugin": "^1.0.143",
+    "@opencode-ai/plugin": "^1.15.13",
     "@types/bun": "^1.2.0",
     "@types/node": "^22.0.0",
     "typescript": "^5.7.0"

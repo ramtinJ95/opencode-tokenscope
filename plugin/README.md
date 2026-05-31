@@ -55,6 +55,10 @@ curl -sSL https://raw.githubusercontent.com/ramtinJ95/opencode-tokenscope/main/p
 
 Then restart OpenCode and run `/tokenscope`
 
+## Compatibility
+
+TokenScope supports the OpenCode plugin client from `@opencode-ai/plugin >=1.1.48`. Newer OpenCode provider metadata is used when available; otherwise TokenScope falls back to its bundled pricing catalog.
+
 ## Updating
 
 ### If installed via npm:
