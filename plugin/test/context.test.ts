@@ -153,3 +153,26 @@ test("context analysis selects the model from the first cache write call", () =>
     modelID: "claude-sonnet-4-20250514",
   })
 })
+
+test("context export runs from the session directory", async () => {
+  const calls: Array<{ sessionID: string; directory?: string }> = []
+  const analyzer = new ContextAnalyzer(tokenizer, undefined, undefined, "/tmp/project", async (sessionID, directory) => {
+    calls.push({ sessionID, directory })
+    return JSON.stringify({ info: { id: sessionID, title: "test" }, messages: [] })
+  })
+
+  await analyzer.analyze(
+    "ses_test",
+    tokenModel,
+    { input: 1, output: 3, cacheRead: 0, cacheWrite: 0 },
+    {
+      enableContextBreakdown: false,
+      enableToolSchemaEstimation: false,
+      enableCacheEfficiency: false,
+      enableSubagentAnalysis: false,
+      enableSkillAnalysis: false,
+    }
+  )
+
+  expect(calls).toEqual([{ sessionID: "ses_test", directory: "/tmp/project" }])
+})

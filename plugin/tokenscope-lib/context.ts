@@ -25,6 +25,17 @@ interface ToolListItem {
   jsonSchema?: unknown
 }
 
+type ExportCommandRunner = (sessionID: string, directory?: string) => Promise<string>
+
+const defaultExportCommandRunner: ExportCommandRunner = async (sessionID, directory) => {
+  const { $ } = await import("bun")
+  // Use .quiet() to capture streams separately, then use only stdout.
+  // This avoids stderr ("Exporting session:") being mixed with JSON.
+  const command = $`opencode export ${sessionID}`
+  const { stdout } = await (directory ? command.cwd(directory) : command).quiet()
+  return stdout.toString()
+}
+
 export class ContextAnalyzer {
   private tokenizerManager: TokenizerManager
   private toolTokenCache = new WeakMap<ToolListItem, number>()
@@ -33,7 +44,8 @@ export class ContextAnalyzer {
     tokenizerManager: TokenizerManager,
     private warnings?: WarningCollector,
     private client?: any,
-    private directory?: string
+    private directory?: string,
+    private exportCommandRunner: ExportCommandRunner = defaultExportCommandRunner
   ) {
     this.tokenizerManager = tokenizerManager
   }
@@ -90,11 +102,7 @@ export class ContextAnalyzer {
    */
   private async runExport(sessionID: string): Promise<ExportedSession | null> {
     try {
-      const { $ } = await import("bun")
-      // Use .quiet() to capture streams separately, then use only stdout
-      // This avoids stderr ("Exporting session:") being mixed with JSON
-      const { stdout } = await $`opencode export ${sessionID}`.quiet()
-      const result = stdout.toString()
+      const result = await this.exportCommandRunner(sessionID, this.directory)
 
       if (!result.trim()) {
         this.warnings?.add(`OpenCode export returned no data for session ${sessionID}. Context sections were skipped.`, `export-empty:${sessionID}`)
