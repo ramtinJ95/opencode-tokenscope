@@ -40,6 +40,11 @@ function formatSingleModelCostLines(cost: CostEstimate): string[] {
 
 function formatModelCostTokenLines(modelCost: ModelCostEstimate, indent: string): string[] {
   const lines: string[] = []
+  if (modelCost.pricingTier === "context_over_200k") {
+    lines.push(`${indent}Pricing tier:      200K+ context rates`)
+  } else if (modelCost.pricingTier === "mixed_context_tiers") {
+    lines.push(`${indent}Pricing tier:      Mixed standard/200K+ context rates (effective blended rates shown)`)
+  }
   lines.push(
     `${indent}Input tokens:      ${formatNumber(modelCost.inputTokens).padStart(10)} × $${modelCost.pricePerMillionInput.toFixed(2)}/M  = $${modelCost.estimatedInputCost.toFixed(4)}`
   )

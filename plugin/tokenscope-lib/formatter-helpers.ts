@@ -79,6 +79,7 @@ export function calculateModelAwareCacheEfficiency(efficiency: CacheEfficiency, 
   cacheWriteTokens: number
   pricePerMillionInput: number
   estimatedInputCost: number
+  estimatedInputCostWithoutCaching?: number
   estimatedCacheReadCost: number
   estimatedCacheWriteCost: number
 }> }): CacheEfficiency {
@@ -86,7 +87,7 @@ export function calculateModelAwareCacheEfficiency(efficiency: CacheEfficiency, 
 
   const costWithoutCaching = cost.perModelCosts.reduce((sum, modelCost) => {
     const inputIfUncached = modelCost.inputTokens + modelCost.cacheReadTokens + modelCost.cacheWriteTokens
-    return sum + (inputIfUncached / 1_000_000) * modelCost.pricePerMillionInput
+    return sum + (modelCost.estimatedInputCostWithoutCaching ?? (inputIfUncached / 1_000_000) * modelCost.pricePerMillionInput)
   }, 0)
   const costWithCaching = cost.perModelCosts.reduce(
     (sum, modelCost) =>

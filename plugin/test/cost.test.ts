@@ -2,6 +2,8 @@ import { expect, test } from "bun:test"
 
 import { ModelResolver } from "../tokenscope-lib/analyzer.js"
 import { CostCalculator } from "../tokenscope-lib/cost.js"
+import { calculateModelAwareCacheEfficiency } from "../tokenscope-lib/formatter-helpers.js"
+import { formatCacheEfficiency } from "../tokenscope-lib/formatter-insight-sections.js"
 import { summarizeTelemetry } from "../tokenscope-lib/telemetry.js"
 import type { TokenAnalysis } from "../tokenscope-lib/types.js"
 
@@ -175,6 +177,228 @@ test("calculateCost applies per-model prices to input output and cache token typ
   expect(cost.estimatedSessionCost).toBeCloseTo(0.045225)
   expect(cost.perModelCosts.find((model) => model.providerID === "anthropic")?.estimatedSessionCost).toBeCloseTo(0.03975)
   expect(cost.perModelCosts.find((model) => model.providerID === "google")?.estimatedSessionCost).toBeCloseTo(0.005475)
+})
+
+test("calculateCost applies over 200k context pricing when available", () => {
+  const calculator = new CostCalculator({
+    "anthropic/claude-sonnet-4-20250514": {
+      input: 1,
+      output: 2,
+      cacheRead: 0.1,
+      cacheWrite: 1,
+      contextOver200k: { input: 2, output: 4, cacheRead: 0.2, cacheWrite: 2 },
+    },
+    default: { input: 1, output: 3, cacheWrite: 0, cacheRead: 0 },
+  })
+
+  const cost = calculator.calculateCost(
+    baseAnalysis({
+      pricingModelName: "anthropic/claude-sonnet-4-20250514",
+      inputTokens: 1_000,
+      outputTokens: 100,
+      cacheReadTokens: 210_000,
+      apiCallCount: 1,
+      perModelUsage: [
+        {
+          providerID: "anthropic",
+          modelID: "claude-sonnet-4-20250514",
+          modelName: "anthropic/claude-sonnet-4-20250514",
+          inputTokens: 1_000,
+          outputTokens: 100,
+          reasoningTokens: 0,
+          cacheReadTokens: 210_000,
+          cacheWriteTokens: 0,
+          apiCost: 0,
+          apiCallCount: 1,
+          callsWithCacheRead: 1,
+          callsWithCacheWrite: 0,
+        },
+      ],
+    })
+  )
+
+  expect(cost.estimatedSessionCost).toBeCloseTo(0.0444)
+  expect(cost.perModelCosts[0]?.pricePerMillionInput).toBe(2)
+  expect(cost.perModelCosts[0]?.pricePerMillionCacheRead).toBe(0.2)
+  expect(cost.perModelCosts[0]?.pricingTier).toBe("context_over_200k")
+})
+
+test("calculateCost applies over 200k pricing per API call instead of aggregated totals", () => {
+  const calculator = new CostCalculator({
+    "anthropic/claude-sonnet-4-20250514": {
+      input: 1,
+      output: 2,
+      cacheRead: 0.1,
+      cacheWrite: 1,
+      contextOver200k: { input: 2, output: 4, cacheRead: 0.2, cacheWrite: 2 },
+    },
+    default: { input: 1, output: 3, cacheWrite: 0, cacheRead: 0 },
+  })
+
+  const cost = calculator.calculateCost(
+    baseAnalysis({
+      pricingModelName: "anthropic/claude-sonnet-4-20250514",
+      inputTokens: 300_000,
+      outputTokens: 300,
+      cacheReadTokens: 0,
+      apiCallCount: 3,
+      perModelUsage: [
+        {
+          providerID: "anthropic",
+          modelID: "claude-sonnet-4-20250514",
+          modelName: "anthropic/claude-sonnet-4-20250514",
+          inputTokens: 300_000,
+          outputTokens: 300,
+          reasoningTokens: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          apiCost: 0,
+          apiCallCount: 3,
+          callsWithCacheRead: 0,
+          callsWithCacheWrite: 0,
+          costSegments: [
+            { inputTokens: 100_000, outputTokens: 100, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, apiCallCount: 1 },
+            { inputTokens: 100_000, outputTokens: 100, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, apiCallCount: 1 },
+            { inputTokens: 100_000, outputTokens: 100, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, apiCallCount: 1 },
+          ],
+        },
+      ],
+    })
+  )
+
+  expect(cost.estimatedSessionCost).toBeCloseTo(0.3006)
+  expect(cost.perModelCosts[0]?.pricePerMillionInput).toBe(1)
+  expect(cost.perModelCosts[0]?.pricingTier).toBeUndefined()
+})
+
+test("calculateCost reports effective blended rates for mixed context tiers", () => {
+  const calculator = new CostCalculator({
+    "anthropic/claude-sonnet-4-20250514": {
+      input: 1,
+      output: 2,
+      cacheRead: 0.1,
+      cacheWrite: 1,
+      contextOver200k: { input: 2, output: 4, cacheRead: 0.2, cacheWrite: 2 },
+    },
+    default: { input: 1, output: 3, cacheWrite: 0, cacheRead: 0 },
+  })
+
+  const cost = calculator.calculateCost(
+    baseAnalysis({
+      pricingModelName: "anthropic/claude-sonnet-4-20250514",
+      inputTokens: 350_000,
+      outputTokens: 300,
+      apiCallCount: 2,
+      perModelUsage: [
+        {
+          providerID: "anthropic",
+          modelID: "claude-sonnet-4-20250514",
+          modelName: "anthropic/claude-sonnet-4-20250514",
+          inputTokens: 350_000,
+          outputTokens: 300,
+          reasoningTokens: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          apiCost: 0,
+          apiCallCount: 2,
+          callsWithCacheRead: 0,
+          callsWithCacheWrite: 0,
+          costSegments: [
+            { inputTokens: 100_000, outputTokens: 100, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, apiCallCount: 1 },
+            { inputTokens: 250_000, outputTokens: 200, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, apiCallCount: 1 },
+          ],
+        },
+      ],
+    })
+  )
+
+  expect(cost.estimatedSessionCost).toBeCloseTo(0.601)
+  expect(cost.perModelCosts[0]?.pricingTier).toBe("mixed_context_tiers")
+  expect(cost.perModelCosts[0]?.pricePerMillionInput).toBeCloseTo(1.7142857)
+  expect(cost.perModelCosts[0]?.pricePerMillionOutput).toBeCloseTo(3.3333333)
+})
+
+test("cache efficiency uses per-call uncached context tiers for cached tokens", () => {
+  const calculator = new CostCalculator({
+    "anthropic/claude-sonnet-4-20250514": {
+      input: 1,
+      output: 2,
+      cacheRead: 0.1,
+      cacheWrite: 1,
+      contextOver200k: { input: 2, output: 4, cacheRead: 0.2, cacheWrite: 2 },
+    },
+    default: { input: 1, output: 3, cacheWrite: 0, cacheRead: 0 },
+  })
+
+  const cost = calculator.calculateCost(
+    baseAnalysis({
+      pricingModelName: "anthropic/claude-sonnet-4-20250514",
+      inputTokens: 100_000,
+      cacheReadTokens: 250_000,
+      apiCallCount: 2,
+      perModelUsage: [
+        {
+          providerID: "anthropic",
+          modelID: "claude-sonnet-4-20250514",
+          modelName: "anthropic/claude-sonnet-4-20250514",
+          inputTokens: 100_000,
+          outputTokens: 0,
+          reasoningTokens: 0,
+          cacheReadTokens: 250_000,
+          cacheWriteTokens: 0,
+          apiCost: 0,
+          apiCallCount: 2,
+          callsWithCacheRead: 1,
+          callsWithCacheWrite: 0,
+          costSegments: [
+            { inputTokens: 100_000, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, apiCallCount: 1 },
+            { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 250_000, cacheWriteTokens: 0, apiCallCount: 1 },
+          ],
+        },
+      ],
+    })
+  )
+
+  const efficiency = calculateModelAwareCacheEfficiency(
+    {
+      cacheReadTokens: 250_000,
+      freshInputTokens: 100_000,
+      cacheWriteTokens: 0,
+      totalInputTokens: 350_000,
+      cacheHitRate: 71.4,
+      costWithoutCaching: 0,
+      costWithCaching: 0,
+      costSavings: 0,
+      savingsPercent: 0,
+      effectiveRate: 0,
+      standardRate: 1,
+    },
+    cost
+  )
+
+  expect(cost.perModelCosts[0]?.estimatedInputCostWithoutCaching).toBeCloseTo(0.6)
+  expect(efficiency.costWithoutCaching).toBeCloseTo(0.6)
+  expect(efficiency.costWithCaching).toBeCloseTo(0.15)
+
+  const lines = formatCacheEfficiency(
+    {
+      cacheReadTokens: 250_000,
+      freshInputTokens: 100_000,
+      cacheWriteTokens: 0,
+      totalInputTokens: 350_000,
+      cacheHitRate: 71.4,
+      costWithoutCaching: 0,
+      costWithCaching: 0,
+      costSavings: 0,
+      savingsPercent: 0,
+      effectiveRate: 0,
+      standardRate: 1,
+    },
+    cost,
+    "claude-sonnet-4-20250514"
+  )
+
+  expect(lines.join("\n")).toContain("350,000 tokens x $1.71/M")
 })
 
 test("calculateCost uses the analysis pricing model when telemetry model metadata is missing", () => {

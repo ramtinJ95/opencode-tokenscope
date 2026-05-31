@@ -155,14 +155,25 @@ export function formatCacheEfficiency(efficiency: CacheEfficiency, cost: CostEst
     lines.push(`    Without caching:   $${modelAwareEfficiency.costWithoutCaching.toFixed(4)}`)
     lines.push(`    With caching:      $${modelAwareEfficiency.costWithCaching.toFixed(4)}`)
   } else {
+    const modelCost = cost.perModelCosts[0]
+    const inputRate = modelCost?.pricePerMillionInput ?? cost.pricePerMillionInput
+    const uncachedInputRate = modelCost?.pricingTier === "mixed_context_tiers" ? modelAwareEfficiency.standardRate : inputRate
+    const cacheReadRate = modelCost?.pricePerMillionCacheRead ?? cost.pricePerMillionCacheRead
+    const cacheWriteRate = modelCost?.pricePerMillionCacheWrite ?? cost.pricePerMillionCacheWrite
+    const tierLabel =
+      modelCost?.pricingTier === "context_over_200k"
+        ? ", 200K+ context rates"
+        : modelCost?.pricingTier === "mixed_context_tiers"
+          ? ", mixed context rates"
+          : ""
     lines.push(
-      `  Cost Analysis (${modelName} @ $${cost.pricePerMillionInput.toFixed(2)}/M input, $${cost.pricePerMillionCacheRead.toFixed(2)}/M cache read, $${cost.pricePerMillionCacheWrite.toFixed(2)}/M cache write):`
+      `  Cost Analysis (${modelName} @ $${inputRate.toFixed(2)}/M input, $${cacheReadRate.toFixed(2)}/M cache read, $${cacheWriteRate.toFixed(2)}/M cache write${tierLabel}):`
     )
     lines.push(
-      `    Without caching:   $${modelAwareEfficiency.costWithoutCaching.toFixed(4)}  (${formatNumber(total)} tokens x $${cost.pricePerMillionInput.toFixed(2)}/M)`
+      `    Without caching:   $${modelAwareEfficiency.costWithoutCaching.toFixed(4)}  (${formatNumber(total)} tokens x $${uncachedInputRate.toFixed(2)}/M)`
     )
     lines.push(
-      `    With caching:      $${modelAwareEfficiency.costWithCaching.toFixed(4)}  (fresh x $${cost.pricePerMillionInput.toFixed(2)}/M + cache read x $${cost.pricePerMillionCacheRead.toFixed(2)}/M + cache write x $${cost.pricePerMillionCacheWrite.toFixed(2)}/M)`
+      `    With caching:      $${modelAwareEfficiency.costWithCaching.toFixed(4)}  (fresh x $${inputRate.toFixed(2)}/M + cache read x $${cacheReadRate.toFixed(2)}/M + cache write x $${cacheWriteRate.toFixed(2)}/M)`
     )
   }
   lines.push(`  ───────────────────────────────────────────────────────────────────`)

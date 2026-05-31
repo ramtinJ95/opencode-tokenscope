@@ -173,20 +173,37 @@ export interface ModelTokenUsage {
   apiCallCount: number
   callsWithCacheRead: number
   callsWithCacheWrite: number
+  costSegments?: ModelTokenUsageSegment[]
 }
 
-export interface ModelCostEstimate extends ModelTokenUsage {
-  pricingModelName: string
-  hasPricing: boolean
+export interface ModelTokenUsageSegment {
+  inputTokens: number
+  outputTokens: number
+  reasoningTokens: number
+  cacheReadTokens: number
+  cacheWriteTokens: number
+  apiCallCount: number
+}
+
+export type PricingTier = "context_over_200k" | "mixed_context_tiers"
+
+export interface TokenCostBreakdown {
   estimatedSessionCost: number
   estimatedInputCost: number
   estimatedOutputCost: number
   estimatedCacheReadCost: number
   estimatedCacheWriteCost: number
+  estimatedInputCostWithoutCaching: number
   pricePerMillionInput: number
   pricePerMillionOutput: number
   pricePerMillionCacheRead: number
   pricePerMillionCacheWrite: number
+  pricingTier?: PricingTier
+}
+
+export interface ModelCostEstimate extends ModelTokenUsage, TokenCostBreakdown {
+  pricingModelName: string
+  hasPricing: boolean
 }
 
 export interface SubagentSummary {
@@ -362,6 +379,13 @@ export interface ModelPricing {
   output: number
   cacheWrite: number
   cacheRead: number
+  contextWindow?: number
+  contextOver200k?: {
+    input: number
+    output: number
+    cacheWrite: number
+    cacheRead: number
+  }
 }
 
 export interface ChildSession {

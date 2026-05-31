@@ -1,6 +1,20 @@
 // CostCalculator - calculates costs from token analysis
 
-import type { TokenAnalysis, CostEstimate, ModelCostEstimate, ModelPricing, ModelTokenUsage } from "./types.js"
+import type {
+  TokenAnalysis,
+  CostEstimate,
+  ModelCostEstimate,
+  ModelPricing,
+  ModelTokenUsage,
+  ModelTokenUsageSegment,
+  PricingTier,
+  TokenCostBreakdown,
+} from "./types.js"
+
+type PriceableTokenUsage = Pick<
+  ModelTokenUsage | ModelTokenUsageSegment,
+  "inputTokens" | "outputTokens" | "reasoningTokens" | "cacheReadTokens" | "cacheWriteTokens"
+>
 
 export class CostCalculator {
   constructor(private pricingData: Record<string, ModelPricing>) {}
@@ -53,27 +67,116 @@ export class CostCalculator {
     return usage.map((modelUsage) => {
       const pricingModelName = this.resolvePricingModelName(modelUsage, fallbackPricingModelName)
       const pricing = this.getPricing(pricingModelName)
-      const estimatedInputCost = (modelUsage.inputTokens / 1_000_000) * pricing.input
-      const estimatedOutputCost = ((modelUsage.outputTokens + modelUsage.reasoningTokens) / 1_000_000) * pricing.output
-      const estimatedCacheReadCost = (modelUsage.cacheReadTokens / 1_000_000) * pricing.cacheRead
-      const estimatedCacheWriteCost = (modelUsage.cacheWriteTokens / 1_000_000) * pricing.cacheWrite
+      const usageCost = this.calculateModelUsageCost(modelUsage, pricing)
 
       return {
         ...modelUsage,
         pricingModelName,
         hasPricing: this.hasPricing(pricingModelName),
-        estimatedSessionCost:
-          estimatedInputCost + estimatedOutputCost + estimatedCacheReadCost + estimatedCacheWriteCost,
-        estimatedInputCost,
-        estimatedOutputCost,
-        estimatedCacheReadCost,
-        estimatedCacheWriteCost,
-        pricePerMillionInput: pricing.input,
-        pricePerMillionOutput: pricing.output,
-        pricePerMillionCacheRead: pricing.cacheRead,
-        pricePerMillionCacheWrite: pricing.cacheWrite,
+        ...usageCost,
       }
     })
+  }
+
+  calculateUsageCost(modelUsage: PriceableTokenUsage, pricing: ModelPricing): TokenCostBreakdown {
+    return this.calculateUsageCostForRate(modelUsage, this.selectPricingRate(modelUsage, pricing), pricing)
+  }
+
+  calculateModelUsageCost(modelUsage: ModelTokenUsage, pricing: ModelPricing): TokenCostBreakdown {
+    if (!modelUsage.costSegments || modelUsage.costSegments.length === 0) {
+      return this.calculateUsageCost(modelUsage, pricing)
+    }
+
+    const segmentCosts = modelUsage.costSegments.map((segment) => this.calculateUsageCost(segment, pricing))
+    const firstTier = segmentCosts[0]?.pricingTier
+    const pricingTier: PricingTier | undefined = segmentCosts.every((segment) => segment.pricingTier === firstTier)
+      ? firstTier
+      : "mixed_context_tiers"
+    const summedCosts = this.sumCostBreakdowns(segmentCosts)
+    const lastSegmentCost = segmentCosts[segmentCosts.length - 1]
+    const mixedRate = (tokens: number, cost: number, fallback: number) =>
+      pricingTier === "mixed_context_tiers" && tokens > 0 ? (cost / tokens) * 1_000_000 : fallback
+
+    return {
+      ...summedCosts,
+      pricePerMillionInput: mixedRate(modelUsage.inputTokens, summedCosts.estimatedInputCost, lastSegmentCost?.pricePerMillionInput ?? pricing.input),
+      pricePerMillionOutput: mixedRate(
+        modelUsage.outputTokens + modelUsage.reasoningTokens,
+        summedCosts.estimatedOutputCost,
+        lastSegmentCost?.pricePerMillionOutput ?? pricing.output
+      ),
+      pricePerMillionCacheRead: mixedRate(
+        modelUsage.cacheReadTokens,
+        summedCosts.estimatedCacheReadCost,
+        lastSegmentCost?.pricePerMillionCacheRead ?? pricing.cacheRead
+      ),
+      pricePerMillionCacheWrite: mixedRate(
+        modelUsage.cacheWriteTokens,
+        summedCosts.estimatedCacheWriteCost,
+        lastSegmentCost?.pricePerMillionCacheWrite ?? pricing.cacheWrite
+      ),
+      pricingTier,
+    }
+  }
+
+  private sumCostBreakdowns(costs: TokenCostBreakdown[]) {
+    const estimatedInputCost = costs.reduce((sum, cost) => sum + cost.estimatedInputCost, 0)
+    const estimatedOutputCost = costs.reduce((sum, cost) => sum + cost.estimatedOutputCost, 0)
+    const estimatedCacheReadCost = costs.reduce((sum, cost) => sum + cost.estimatedCacheReadCost, 0)
+    const estimatedCacheWriteCost = costs.reduce((sum, cost) => sum + cost.estimatedCacheWriteCost, 0)
+
+    return {
+      estimatedSessionCost: estimatedInputCost + estimatedOutputCost + estimatedCacheReadCost + estimatedCacheWriteCost,
+      estimatedInputCost,
+      estimatedOutputCost,
+      estimatedCacheReadCost,
+      estimatedCacheWriteCost,
+      estimatedInputCostWithoutCaching: costs.reduce((sum, cost) => sum + cost.estimatedInputCostWithoutCaching, 0),
+    }
+  }
+
+  private calculateUsageCostForRate(
+    modelUsage: PriceableTokenUsage,
+    rate: ModelPricing,
+    basePricing: ModelPricing
+  ): TokenCostBreakdown {
+    const estimatedInputCost = (modelUsage.inputTokens / 1_000_000) * rate.input
+    const estimatedOutputCost = ((modelUsage.outputTokens + modelUsage.reasoningTokens) / 1_000_000) * rate.output
+    const estimatedCacheReadCost = (modelUsage.cacheReadTokens / 1_000_000) * rate.cacheRead
+    const estimatedCacheWriteCost = (modelUsage.cacheWriteTokens / 1_000_000) * rate.cacheWrite
+
+    return {
+      estimatedSessionCost: estimatedInputCost + estimatedOutputCost + estimatedCacheReadCost + estimatedCacheWriteCost,
+      estimatedInputCost,
+      estimatedOutputCost,
+      estimatedCacheReadCost,
+      estimatedCacheWriteCost,
+      estimatedInputCostWithoutCaching: this.calculateUncachedInputCost(modelUsage, basePricing),
+      pricePerMillionInput: rate.input,
+      pricePerMillionOutput: rate.output,
+      pricePerMillionCacheRead: rate.cacheRead,
+      pricePerMillionCacheWrite: rate.cacheWrite,
+      pricingTier: rate === basePricing.contextOver200k ? "context_over_200k" : undefined,
+    }
+  }
+
+  private calculateUncachedInputCost(modelUsage: PriceableTokenUsage, pricing: ModelPricing): number {
+    const inputIfUncached = modelUsage.inputTokens + modelUsage.cacheReadTokens + modelUsage.cacheWriteTokens
+    const uncachedUsage = {
+      inputTokens: inputIfUncached,
+      outputTokens: 0,
+      reasoningTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+    }
+    const rate = this.selectPricingRate(uncachedUsage, pricing)
+    return (inputIfUncached / 1_000_000) * rate.input
+  }
+
+  private selectPricingRate(modelUsage: PriceableTokenUsage, pricing: ModelPricing): ModelPricing {
+    const contextTokens = modelUsage.inputTokens + modelUsage.cacheReadTokens + modelUsage.cacheWriteTokens
+    if (pricing.contextOver200k && contextTokens > 200_000) return pricing.contextOver200k
+    return pricing
   }
 
   resolvePricingModelName(modelUsage: ModelTokenUsage, fallbackPricingModelName: string): string {

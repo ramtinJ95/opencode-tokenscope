@@ -2,7 +2,7 @@
 
 import type { SessionMessage, SubagentSummary, SubagentAnalysis, ChildSession } from "./types.js"
 import { CostCalculator } from "./cost.js"
-import { fetchSessionChildren, fetchSessionMessages, unwrapResponseData } from "./opencode.js"
+import { fetchSessionChildren, fetchSessionMessages, type RoutingParams, unwrapResponseData } from "./opencode.js"
 import { summarizeTelemetry } from "./telemetry.js"
 import { WarningCollector, formatErrorMessage } from "./warnings.js"
 
@@ -10,7 +10,8 @@ export class SubagentAnalyzer {
   constructor(
     private client: any,
     private costCalculator: CostCalculator,
-    private warnings?: WarningCollector
+    private warnings?: WarningCollector,
+    private routing: RoutingParams = {}
   ) {}
 
   async analyzeChildSessions(parentSessionID: string): Promise<SubagentAnalysis> {
@@ -28,7 +29,7 @@ export class SubagentAnalyzer {
     }
 
     try {
-      const childrenResponse = await fetchSessionChildren(this.client, parentSessionID)
+      const childrenResponse = await fetchSessionChildren(this.client, parentSessionID, this.routing)
       const children: ChildSession[] = unwrapResponseData<ChildSession[]>(childrenResponse ?? [])
 
       if (!Array.isArray(children) || children.length === 0) return result
@@ -74,7 +75,7 @@ export class SubagentAnalyzer {
 
   private async analyzeChildSession(child: ChildSession): Promise<SubagentSummary | null> {
     try {
-      const messagesResponse = await fetchSessionMessages(this.client, child.id)
+      const messagesResponse = await fetchSessionMessages(this.client, child.id, this.routing)
       const messages: SessionMessage[] = unwrapResponseData<SessionMessage[]>(messagesResponse ?? [])
 
       if (!Array.isArray(messages) || messages.length === 0) return null
@@ -107,18 +108,12 @@ export class SubagentAnalyzer {
         const pricingModelName = this.costCalculator.resolvePricingModelName(modelUsage, fallbackPricingModelName)
         if (!this.costCalculator.hasPricing(pricingModelName)) {
           this.warnings?.add(
-            `Pricing for child session model '${pricingModelName}' was not found in models.json. Subagent cost estimates for that model use the default fallback rates ($1/M input, $3/M output, no cache pricing).`,
+            `Pricing for child session model '${pricingModelName}' was not found in OpenCode metadata or models.json. Subagent cost estimates for that model use the default fallback rates ($1/M input, $3/M output, no cache pricing).`,
             `missing-subagent-pricing:${pricingModelName}`
           )
         }
         const pricing = this.costCalculator.getPricing(pricingModelName)
-        return (
-          sum +
-          (modelUsage.inputTokens / 1_000_000) * pricing.input +
-          ((modelUsage.outputTokens + modelUsage.reasoningTokens) / 1_000_000) * pricing.output +
-          (modelUsage.cacheReadTokens / 1_000_000) * pricing.cacheRead +
-          (modelUsage.cacheWriteTokens / 1_000_000) * pricing.cacheWrite
-        )
+        return sum + this.costCalculator.calculateModelUsageCost(modelUsage, pricing).estimatedSessionCost
       }, 0)
 
       return {
