@@ -96,10 +96,12 @@ export class ModelMetadataResolver {
     const merged = { ...basePricing }
     const liveBareKeyCounts = this.countBareModelKeys(livePricing)
     for (const [modelKey, pricing] of Object.entries(livePricing)) {
+      if (!this.canMergeLivePricing(basePricing[modelKey], pricing)) continue
+
       merged[modelKey] = this.mergeModelPricing(basePricing[modelKey], pricing)
 
       const bareModelKey = this.extractBareModelKey(modelKey)
-      if (bareModelKey && liveBareKeyCounts.get(bareModelKey) === 1) {
+      if (bareModelKey && liveBareKeyCounts.get(bareModelKey) === 1 && this.canMergeLivePricing(basePricing[bareModelKey], pricing)) {
         merged[bareModelKey] = this.mergeModelPricing(basePricing[bareModelKey], pricing)
       }
     }
@@ -216,6 +218,10 @@ export class ModelMetadataResolver {
         cacheWrite,
       }),
     }
+  }
+
+  private canMergeLivePricing(base: ModelPricing | undefined, live: LiveModelPricing): boolean {
+    return !!base || (live.input !== undefined && live.output !== undefined)
   }
 
   private mergeContextOver200k(

@@ -168,6 +168,7 @@ test("fetchProviderList forwards directory routing through direct parameters whe
   await fetchProviderList(client, { directory: "/tmp/project" })
 
   expect(calls).toEqual([
+    { query: { directory: "/tmp/project" }, throwOnError: true },
     [{ directory: "/tmp/project" }, { throwOnError: true }],
   ])
 })
@@ -187,7 +188,6 @@ test("fetchProviderList forwards directory routing through query parameters for 
   await fetchProviderList(client, { directory: "/tmp/project" })
 
   expect(calls).toEqual([
-    { directory: "/tmp/project" },
     { query: { directory: "/tmp/project" }, throwOnError: true },
   ])
 })
@@ -206,7 +206,7 @@ test("fetchProviderList does not fall back to un-routed metadata when routing is
   await expect(fetchProviderList(client, { directory: "/tmp/project" })).rejects.toThrow("bad shape")
 
   expect(calls).toEqual([
-    [{ directory: "/tmp/project" }, { throwOnError: true }],
     { query: { directory: "/tmp/project" }, throwOnError: true },
+    [{ directory: "/tmp/project" }, { throwOnError: true }],
   ])
 })

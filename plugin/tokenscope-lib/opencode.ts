@@ -102,11 +102,11 @@ export async function fetchProviderList(client: any, routing: RoutingParams = {}
   const hasRouting = Object.keys(compactedRouting).length > 0
   const attempts: RequestAttempt[] = []
 
+  attempts.push(() => list.call(client.provider, { ...queryWithRouting(compactedRouting), throwOnError: true }))
+
   if (hasRouting) {
     attempts.push(() => list.call(client.provider, { ...compactedRouting }, { throwOnError: true }))
   }
-
-  attempts.push(() => list.call(client.provider, { ...queryWithRouting(compactedRouting), throwOnError: true }))
 
   if (!hasRouting) {
     attempts.push(() => list.call(client.provider, {}, { throwOnError: true }))
