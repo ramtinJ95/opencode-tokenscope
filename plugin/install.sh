@@ -115,6 +115,7 @@ FILES=(
     "plugin/tokenscope-lib/warnings.ts"
     "plugin/models.json"
     "plugin/package.json"
+    "plugin/tsconfig.json"
     "plugin/tokenscope-config.json"
     "plugin/install.sh"
     "command/tokenscope.md"
@@ -144,26 +145,39 @@ done
 
 echo_info "All files downloaded successfully"
 
-# Install dependencies
-echo_step "4/5 Installing dependencies..."
+# Install dependencies and build the plugin
+echo_step "4/5 Installing dependencies and building plugin..."
 
 DEPS_EXIST=false
-if [ -d "$OPENCODE_DIR/plugin/node_modules/js-tiktoken" ] && [ -d "$OPENCODE_DIR/plugin/node_modules/@huggingface/tokenizers" ]; then
+if [ -d "$OPENCODE_DIR/plugin/node_modules/js-tiktoken" ] && \
+   [ -d "$OPENCODE_DIR/plugin/node_modules/@huggingface/tokenizers" ] && \
+   [ -d "$OPENCODE_DIR/plugin/node_modules/@opencode-ai/plugin" ] && \
+   [ -d "$OPENCODE_DIR/plugin/node_modules/typescript" ]; then
     DEPS_EXIST=true
 fi
 
 if [ "$UPDATE_MODE" = true ] && [ "$DEPS_EXIST" = true ]; then
     echo_info "Update mode: Dependencies already installed, skipping..."
 else
-    echo_info "Installing runtime dependencies from package.json..."
+    echo_info "Installing dependencies from package.json..."
     cd "$OPENCODE_DIR/plugin"
-    if npm install --prefix "$OPENCODE_DIR/plugin" --omit=dev; then
+    if npm install --prefix "$OPENCODE_DIR/plugin"; then
         echo_info "Dependencies installed successfully"
     else
         echo_error "Failed to install dependencies"
-        echo_error "You can try running manually: cd ~/.config/opencode/plugin && npm install --omit=dev"
+        echo_error "You can try running manually: cd ~/.config/opencode/plugin && npm install"
         exit 1
     fi
+fi
+
+echo_info "Building plugin dist files..."
+cd "$OPENCODE_DIR/plugin"
+if npm run build --prefix "$OPENCODE_DIR/plugin"; then
+    echo_info "Plugin built successfully"
+else
+    echo_error "Failed to build plugin"
+    echo_error "You can try running manually: cd ~/.config/opencode/plugin && npm run build"
+    exit 1
 fi
 
 # Verify installation
@@ -171,6 +185,8 @@ echo_step "5/5 Verifying installation..."
 
 REQUIRED_FILES=(
     "$OPENCODE_DIR/plugin/tokenscope.ts"
+    "$OPENCODE_DIR/plugin/dist/tokenscope.js"
+    "$OPENCODE_DIR/plugin/dist/tokenscope-lib/metadata.js"
     "$OPENCODE_DIR/plugin/tokenscope-lib/types.ts"
     "$OPENCODE_DIR/plugin/tokenscope-lib/config.ts"
     "$OPENCODE_DIR/plugin/tokenscope-lib/tokenizer.ts"
@@ -190,9 +206,12 @@ REQUIRED_FILES=(
     "$OPENCODE_DIR/plugin/tokenscope-lib/telemetry.ts"
     "$OPENCODE_DIR/plugin/tokenscope-lib/warnings.ts"
     "$OPENCODE_DIR/plugin/models.json"
+    "$OPENCODE_DIR/plugin/tsconfig.json"
     "$OPENCODE_DIR/plugin/tokenscope-config.json"
     "$OPENCODE_DIR/plugin/node_modules/js-tiktoken"
     "$OPENCODE_DIR/plugin/node_modules/@huggingface/tokenizers"
+    "$OPENCODE_DIR/plugin/node_modules/@opencode-ai/plugin"
+    "$OPENCODE_DIR/plugin/node_modules/typescript"
     "$OPENCODE_DIR/command/tokenscope.md"
 )
 
