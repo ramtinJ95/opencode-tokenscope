@@ -239,6 +239,70 @@ test("ModelMetadataResolver keeps bundled pricing when provider metadata is unav
   await expect(resolver.mergePricingData(bundled)).resolves.toBe(bundled)
 })
 
+test("ModelMetadataResolver skips live metadata without required input and output rates for unknown models", async () => {
+  const client = {
+    provider: {
+      async list() {
+        return {
+          all: [
+            {
+              id: "custom",
+              models: {
+                incomplete: {
+                  id: "incomplete",
+                  cost: { cache: { read: 0.2, write: 2 } },
+                },
+              },
+            },
+          ],
+        }
+      },
+    },
+  }
+
+  const pricing = await new ModelMetadataResolver(client).mergePricingData({
+    default: { input: 1, output: 3, cacheRead: 0, cacheWrite: 0 },
+  })
+
+  expect(pricing["custom/incomplete"]).toBeUndefined()
+})
+
+test("ModelMetadataResolver can merge incomplete live metadata into bundled pricing", async () => {
+  const client = {
+    provider: {
+      async list() {
+        return {
+          all: [
+            {
+              id: "custom",
+              models: {
+                known: {
+                  id: "known",
+                  cost: { cache: { read: 0.2, write: 2 } },
+                  limit: { context: 100_000, output: 8_000 },
+                },
+              },
+            },
+          ],
+        }
+      },
+    },
+  }
+
+  const pricing = await new ModelMetadataResolver(client).mergePricingData({
+    "custom/known": { input: 5, output: 10, cacheRead: 0.5, cacheWrite: 5 },
+  })
+
+  expect(pricing["custom/known"]).toEqual({
+    input: 5,
+    output: 10,
+    cacheRead: 0.2,
+    cacheWrite: 2,
+    contextWindow: 100_000,
+    contextOver200k: undefined,
+  })
+})
+
 test("ModelMetadataResolver preserves bundled cache pricing when live metadata omits cache rates", async () => {
   const client = {
     provider: {
