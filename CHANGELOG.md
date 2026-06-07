@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-06-07
+
+### Added
+
+- Added live OpenCode provider/model metadata lookup for pricing, with bundled `models.json` retained as a fallback.
+- Added support for current OpenCode nested cache pricing and large-context pricing metadata (`cost.cache`, `cost.tiers`, and `experimentalOver200K`).
+- Added directory-routed OpenCode client calls for session messages, child sessions, tool metadata, and provider metadata so TokenScope analyzes the correct project context.
+
+### Changed
+
+- Reworked cost estimation to price each API call by its own context tier instead of applying large-context rates to aggregated session totals.
+- Improved cache-efficiency cost math by recalculating uncached costs per call and per tier.
+- Updated cost report wording to distinguish OpenCode-recorded actual cost from TokenScope API-equivalent estimates.
+- Raised the supported OpenCode plugin peer range to `@opencode-ai/plugin >=1.1.48`.
+
+### Fixed
+
+- Fixed context exports to run from the active session directory.
+- Fixed script-installed plugins by including all split library files, installing build dependencies, and building `dist/` during install/update.
+- Fixed report summary paths to print a safely shell-quoted full report path.
+- Fixed live pricing alias handling for provider model keys, API model IDs, ambiguous bare aliases, incomplete metadata, cache rates, and non-200K context thresholds.
+- Fixed subagent cost estimates to use the same per-call context-tier pricing as main sessions.
+
 ## [1.6.5] - 2026-05-31
 
 ### Changed
@@ -117,7 +140,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Synced READMEs and removed version tags from feature headers
 - Updated install script for better testing before npm push
 
-[Unreleased]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.6.5...HEAD
+[Unreleased]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.7.0...HEAD
+[1.7.0]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.6.5...v1.7.0
 [1.6.5]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.6.4...v1.6.5
 [1.6.4]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.6.3...v1.6.4
 [1.6.3]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.6.2...v1.6.3
