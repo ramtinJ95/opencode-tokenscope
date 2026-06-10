@@ -12,7 +12,7 @@ import type {
   SkillAnalysis,
 } from "./types.js"
 import { CostCalculator } from "./cost.js"
-import { formatCostEstimateLines } from "./formatter-cost-sections.js"
+import { formatCostEstimateLines, formatDetailedSubagentBreakdownLines } from "./formatter-cost-sections.js"
 import {
   collectTopEntries,
   formatCategoryBar,
@@ -358,6 +358,10 @@ export class OutputFormatter {
       )
       lines.push(`\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
       lines.push(``)
+      if (this.config?.enableDetailedSubagentCostBreakdown) {
+        lines.push(`Detailed lines show token buckets plus estimated API-equivalent cost splits.`)
+        lines.push(``)
+      }
       for (const subagent of subagentAnalysis.subagents) {
         const label = `${subagent.agentType}`.padEnd(subagentLabelWidth)
         const costStr = cost.isSubscription
@@ -365,11 +369,44 @@ export class OutputFormatter {
           : `$${subagent.apiCost.toFixed(4)}`
         const tokensStr = `(${formatNumber(subagent.totalTokens)} tokens, ${subagent.apiCallCount} calls)`
         lines.push(`  ${label} ${costStr.padStart(10)}  ${tokensStr}`)
+        if (this.config?.enableDetailedSubagentCostBreakdown) {
+          lines.push(
+            ...formatDetailedSubagentBreakdownLines({
+              freshInputTokens: subagent.inputTokens,
+              cacheReadTokens: subagent.cacheReadTokens,
+              cacheWriteTokens: subagent.cacheWriteTokens,
+              outputTokens: subagent.outputTokens,
+              reasoningTokens: subagent.reasoningTokens,
+              estimatedInputCost: subagent.estimatedInputCost,
+              estimatedCacheReadCost: subagent.estimatedCacheReadCost,
+              estimatedCacheWriteCost: subagent.estimatedCacheWriteCost,
+              estimatedOutputCost: subagent.estimatedOutputCost,
+            })
+          )
+        }
       }
       lines.push(`\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
       lines.push(
         `Subagent Total:${" ".repeat(subagentLabelWidth - 14)} $${subagentTotalCost.toFixed(4)}  (${formatNumber(subagentAnalysis.totalTokens)} tokens, ${subagentAnalysis.totalApiCalls} calls)`
       )
+      if (this.config?.enableDetailedSubagentCostBreakdown) {
+        lines.push(
+          ...formatDetailedSubagentBreakdownLines(
+            {
+              freshInputTokens: subagentAnalysis.totalInputTokens,
+              cacheReadTokens: subagentAnalysis.totalCacheReadTokens,
+              cacheWriteTokens: subagentAnalysis.totalCacheWriteTokens,
+              outputTokens: subagentAnalysis.totalOutputTokens,
+              reasoningTokens: subagentAnalysis.totalReasoningTokens,
+              estimatedInputCost: subagentAnalysis.estimatedInputCost,
+              estimatedCacheReadCost: subagentAnalysis.estimatedCacheReadCost,
+              estimatedCacheWriteCost: subagentAnalysis.estimatedCacheWriteCost,
+              estimatedOutputCost: subagentAnalysis.estimatedOutputCost,
+            },
+            "  "
+          )
+        )
+      }
     }
 
     // 11. SUMMARY (always last)

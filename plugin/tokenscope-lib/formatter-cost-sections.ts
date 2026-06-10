@@ -1,6 +1,18 @@
 import type { CostEstimate, ModelCostEstimate } from "./types.js"
 import { formatNumber } from "./formatter-helpers.js"
 
+export interface DetailedSubagentBreakdown {
+  freshInputTokens: number
+  cacheReadTokens: number
+  cacheWriteTokens: number
+  outputTokens: number
+  reasoningTokens: number
+  estimatedInputCost: number
+  estimatedCacheReadCost: number
+  estimatedCacheWriteCost: number
+  estimatedOutputCost: number
+}
+
 export function formatCostEstimateLines(cost: CostEstimate): string[] {
   const hasMultipleModels = cost.perModelCosts.length > 1
 
@@ -26,6 +38,28 @@ export function formatCostEstimateLines(cost: CostEstimate): string[] {
   if (cost.cacheWriteTokens > 0) lines.push(`  Blended cache write: $${cost.estimatedCacheWriteCost.toFixed(4)}`)
 
   return lines
+}
+
+export function formatDetailedSubagentBreakdownLines(
+  breakdown: DetailedSubagentBreakdown,
+  indent = "    "
+): string[] {
+  const outputLabel = breakdown.reasoningTokens > 0 ? "output+reasoning" : "output"
+  const tokenParts = [
+    `fresh ${formatNumber(breakdown.freshInputTokens)}`,
+    `cache read ${formatNumber(breakdown.cacheReadTokens)}`,
+    `cache write ${formatNumber(breakdown.cacheWriteTokens)}`,
+    `output ${formatNumber(breakdown.outputTokens)}`,
+  ]
+
+  if (breakdown.reasoningTokens > 0) {
+    tokenParts.push(`reasoning ${formatNumber(breakdown.reasoningTokens)}`)
+  }
+
+  return [
+    `${indent}Tokens: ${tokenParts.join(" | ")}`,
+    `${indent}Estimated split: fresh $${breakdown.estimatedInputCost.toFixed(4)} | cache read $${breakdown.estimatedCacheReadCost.toFixed(4)} | cache write $${breakdown.estimatedCacheWriteCost.toFixed(4)} | ${outputLabel} $${breakdown.estimatedOutputCost.toFixed(4)}`,
+  ]
 }
 
 function formatSingleModelCostLines(cost: CostEstimate): string[] {

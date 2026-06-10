@@ -3,5 +3,6 @@
   "enableToolSchemaEstimation": true,
   "enableCacheEfficiency": true,
   "enableSubagentAnalysis": true,
+  "enableDetailedSubagentCostBreakdown": false,
   "enableSkillAnalysis": true
 }

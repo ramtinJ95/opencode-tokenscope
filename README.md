@@ -148,6 +148,7 @@ cat token-usage-output.txt
 - **Child Session Analysis**: Recursively analyzes all subagent sessions spawned by the Task tool
 - **Aggregated Totals**: Shows combined tokens, costs, and API calls across main session and all subagents
 - **Per-Agent Breakdown**: Lists each subagent with its type, token usage, cost, and API call count
+- **Detailed Cost Buckets**: Optional config flag expands each subagent with fresh input, cache read, cache write, output, and reasoning token buckets plus estimated per-bucket costs
 - **Optional Toggle**: Enable/disable subagent analysis with the `includeSubagents` parameter
 
 ### Advanced Features
@@ -413,6 +414,7 @@ Default flags:
   "enableToolSchemaEstimation": true,
   "enableCacheEfficiency": true,
   "enableSubagentAnalysis": true,
+  "enableDetailedSubagentCostBreakdown": false,
   "enableSkillAnalysis": true
 }
 ```
@@ -421,12 +423,13 @@ Example user override:
 
 ```json
 {
-  "enableSubagentAnalysis": false,
+  "enableDetailedSubagentCostBreakdown": true,
   "enableSkillAnalysis": false
 }
 ```
 
 Set any option to `false` to hide that section from the output.
+Set `enableDetailedSubagentCostBreakdown` to `true` to expand the subagent section with per-session token buckets and estimated cost splits.
 
 ## Troubleshooting
 

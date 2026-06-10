@@ -54,4 +54,10 @@ test("SubagentAnalyzer estimates child session cost using per-call context tiers
 
   expect(analysis.subagents).toHaveLength(1)
   expect(analysis.subagents[0]?.estimatedCost).toBeCloseTo(0.3006)
+  expect(analysis.subagents[0]?.estimatedInputCost).toBeCloseTo(0.3)
+  expect(analysis.subagents[0]?.estimatedOutputCost).toBeCloseTo(0.0006)
+  expect(analysis.subagents[0]?.estimatedCacheReadCost).toBe(0)
+  expect(analysis.subagents[0]?.estimatedCacheWriteCost).toBe(0)
+  expect(analysis.estimatedInputCost).toBeCloseTo(0.3)
+  expect(analysis.estimatedOutputCost).toBeCloseTo(0.0006)
 })

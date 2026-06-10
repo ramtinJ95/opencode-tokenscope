@@ -175,6 +175,7 @@ test("context export runs from the session directory", async () => {
       enableToolSchemaEstimation: false,
       enableCacheEfficiency: false,
       enableSubagentAnalysis: false,
+      enableDetailedSubagentCostBreakdown: false,
       enableSkillAnalysis: false,
     }
   )

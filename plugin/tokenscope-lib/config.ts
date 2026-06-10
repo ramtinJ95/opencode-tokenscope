@@ -55,6 +55,7 @@ export const DEFAULT_TOKENSCOPE_CONFIG: TokenscopeConfig = {
   enableToolSchemaEstimation: true,
   enableCacheEfficiency: true,
   enableSubagentAnalysis: true,
+  enableDetailedSubagentCostBreakdown: false,
   enableSkillAnalysis: true,
 }
 
