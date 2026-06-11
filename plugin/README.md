@@ -282,7 +282,7 @@ Total tokens processed across the entire session (for cost calculation):
 ESTIMATED SESSION COST (API Key Pricing)
 ─────────────────────────────────────────────────────────────────────────
 
-You appear to be on a subscription plan (API cost is $0).
+You appear to be on a subscription plan, so the public token cost estimate is shown below.
 Here's what this session would cost with direct API access:
 
   Input tokens:              10 × $5.00/M  = $0.0001

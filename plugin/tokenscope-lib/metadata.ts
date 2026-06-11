@@ -80,6 +80,19 @@ type LiveModelPricing = Partial<Omit<ModelPricing, "contextOver200k">> & {
   contextOver200k?: Partial<NonNullable<ModelPricing["contextOver200k"]>>
 }
 
+type PricingLike = {
+  input?: number
+  output?: number
+  cacheRead?: number
+  cacheWrite?: number
+  contextOver200k?: {
+    input?: number
+    output?: number
+    cacheRead?: number
+    cacheWrite?: number
+  }
+}
+
 export class ModelMetadataResolver {
   private pricingCache?: Record<string, LiveModelPricing>
 
@@ -96,12 +109,17 @@ export class ModelMetadataResolver {
     const merged = { ...basePricing }
     const liveBareKeyCounts = this.countBareModelKeys(livePricing)
     for (const [modelKey, pricing] of Object.entries(livePricing)) {
-      if (!this.canMergeLivePricing(basePricing[modelKey], pricing)) continue
+      const bareModelKey = this.extractBareModelKey(modelKey)
+      const bundledPricing = basePricing[modelKey] ?? (bareModelKey ? basePricing[bareModelKey] : undefined)
+      if (!this.canMergeLivePricing(bundledPricing, pricing)) continue
 
       merged[modelKey] = this.mergeModelPricing(basePricing[modelKey], pricing)
 
-      const bareModelKey = this.extractBareModelKey(modelKey)
-      if (bareModelKey && liveBareKeyCounts.get(bareModelKey) === 1 && this.canMergeLivePricing(basePricing[bareModelKey], pricing)) {
+      if (
+        bareModelKey &&
+        liveBareKeyCounts.get(bareModelKey) === 1 &&
+        this.canMergeLivePricing(basePricing[bareModelKey] ?? bundledPricing, pricing)
+      ) {
         merged[bareModelKey] = this.mergeModelPricing(basePricing[bareModelKey], pricing)
       }
     }
@@ -221,7 +239,23 @@ export class ModelMetadataResolver {
   }
 
   private canMergeLivePricing(base: ModelPricing | undefined, live: LiveModelPricing): boolean {
+    if (base && this.hasAnyNonZeroPricing(base) && !this.hasAnyNonZeroPricing(live)) return false
     return !!base || (live.input !== undefined && live.output !== undefined)
+  }
+
+  private hasAnyNonZeroPricing(pricing: PricingLike | undefined): boolean {
+    if (!pricing) return false
+
+    return [
+      pricing.input,
+      pricing.output,
+      pricing.cacheRead,
+      pricing.cacheWrite,
+      pricing.contextOver200k?.input,
+      pricing.contextOver200k?.output,
+      pricing.contextOver200k?.cacheRead,
+      pricing.contextOver200k?.cacheWrite,
+    ].some((value) => value !== undefined && value !== 0)
   }
 
   private mergeContextOver200k(

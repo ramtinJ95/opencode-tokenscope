@@ -99,8 +99,23 @@ export class SubagentAnalyzer {
 
       for (const message of messages) {
         if (message.info.role !== "assistant") continue
-        const messageProviderID = message.info.providerID ?? message.info.model?.providerID
-        const messageModelID = message.info.modelID ?? message.info.model?.modelID ?? message.info.model?.id
+        const messageProviderID =
+          message.data?.providerID ??
+          message.data?.model?.providerID ??
+          message.info.providerID ??
+          message.info.model?.providerID ??
+          message.providerID ??
+          message.model?.providerID
+        const messageModelID =
+          message.data?.modelID ??
+          message.data?.model?.modelID ??
+          message.data?.model?.id ??
+          message.info.modelID ??
+          message.info.model?.modelID ??
+          message.info.model?.id ??
+          message.modelID ??
+          message.model?.modelID ??
+          message.model?.id
 
         if (messageProviderID) providerID = messageProviderID
         if (messageModelID) modelName = messageModelID

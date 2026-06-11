@@ -272,7 +272,7 @@ export class OutputFormatter {
       lines.push(`ESTIMATED SESSION COST (API Key Pricing)`)
       lines.push(`\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
       lines.push(``)
-      lines.push(`You appear to be on a subscription plan (API cost is $0).`)
+      lines.push(`You appear to be on a subscription plan, so the public token cost estimate is shown below.`)
       lines.push(`Here's what this session would cost with direct API access:`)
       lines.push(``)
       lines.push(...formatCostEstimateLines(cost))

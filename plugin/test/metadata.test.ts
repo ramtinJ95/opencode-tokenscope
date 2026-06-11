@@ -371,6 +371,41 @@ test("ModelMetadataResolver updates bundled bare model aliases with live pricing
   expect(pricing["anthropic/claude-sonnet-4-20250514"]).toMatchObject({ input: 4, output: 16, cacheRead: 0.4, cacheWrite: 4 })
 })
 
+test("ModelMetadataResolver keeps bundled pricing when live provider metadata reports zero subscription rates", async () => {
+  const client = {
+    provider: {
+      async list() {
+        return {
+          all: [
+            {
+              id: "openai",
+              models: {
+                "gpt-5.4-mini": {
+                  id: "gpt-5.4-mini",
+                  cost: {
+                    input: 0,
+                    output: 0,
+                    cache: { read: 0, write: 0 },
+                  },
+                },
+              },
+            },
+          ],
+        }
+      },
+    },
+  }
+
+  const bundled = {
+    default: { input: 1, output: 3, cacheRead: 0, cacheWrite: 0 },
+    "openai/gpt-5.4-mini": { input: 0.75, output: 4.5, cacheRead: 0.075, cacheWrite: 0 },
+  }
+
+  const pricing = await new ModelMetadataResolver(client).mergePricingData(bundled)
+
+  expect(pricing["openai/gpt-5.4-mini"]).toEqual(bundled["openai/gpt-5.4-mini"])
+})
+
 test("ModelMetadataResolver does not overwrite bare aliases when live model IDs are ambiguous", async () => {
   const client = {
     provider: {

@@ -124,6 +124,21 @@ test("ModelResolver reads scalar provider and model IDs from message data", () =
   expect(resolved.modelID).toBe("gpt-5.4-mini")
 })
 
+test("ModelResolver prefers data model fields over stale info model fields", () => {
+  const resolver = new ModelResolver()
+  const resolved = resolver.resolveModelAndProvider([
+    {
+      info: { id: "msg_1", role: "assistant", model: { providerID: "openai", modelID: "gpt-5.4" } },
+      data: { providerID: "openai", modelID: "gpt-5.4-mini" },
+      parts: [],
+    },
+  ])
+
+  expect(resolved.providerID).toBe("openai")
+  expect(resolved.modelID).toBe("gpt-5.4-mini")
+  expect(resolved.model.name).toBe("gpt-5.4-mini")
+})
+
 test("calculateCost applies per-model prices to input output and cache token types", () => {
   const calculator = new CostCalculator({
     "anthropic/claude-sonnet-4-20250514": { input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 },

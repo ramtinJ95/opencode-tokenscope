@@ -41,3 +41,31 @@ test("formats optional detailed subagent breakdowns when enabled", () => {
   )
   expect(report).toContain("Subagent Total:")
 })
+
+test("formats subscription reports with public estimate wording", () => {
+  const formatter = new OutputFormatter(
+    new CostCalculator({
+      "anthropic/claude-sonnet-4-20250514": { input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 },
+      "google/gemini-2.5-flash": { input: 0.3, output: 2.5, cacheWrite: 0, cacheRead: 0.075 },
+      default: { input: 1, output: 3, cacheWrite: 0, cacheRead: 0 },
+    })
+  )
+
+  formatter.setConfig({
+    enableContextBreakdown: true,
+    enableToolSchemaEstimation: true,
+    enableCacheEfficiency: true,
+    enableSubagentAnalysis: true,
+    enableDetailedSubagentCostBreakdown: false,
+    enableSkillAnalysis: true,
+  })
+
+  const report = formatter.format({
+    ...buildFormatterFixtureAnalysis(),
+    sessionCost: 0,
+  })
+
+  expect(report).toContain("ESTIMATED SESSION COST (API Key Pricing)")
+  expect(report).toContain("public token cost estimate is shown below")
+  expect(report).not.toContain("API cost is $0")
+})
