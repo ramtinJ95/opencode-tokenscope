@@ -7,9 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.1] - 2026-06-13
+
 ### Added
 
 - Added an opt-in `enableDetailedSubagentCostBreakdown` config flag that expands subagent report sections with fresh input, cache read, cache write, output, and reasoning token buckets plus estimated per-bucket costs.
+
+### Fixed
+
+- Fixed the default context export runner so npm-installed plugins no longer require Bun to analyze exported session data.
+- Fixed subagent cost reporting to show recorded child-session API costs when available, including mixed main-session subscription and child-session API-cost cases.
+- Fixed subagent estimated cost splits to clearly distinguish API-rate estimates from recorded API costs.
+- Fixed live metadata fallback merging for provider-qualified and bare model aliases when provider metadata is partial.
 
 ## [1.7.0] - 2026-06-07
 
@@ -144,7 +153,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Synced READMEs and removed version tags from feature headers
 - Updated install script for better testing before npm push
 
-[Unreleased]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.7.0...HEAD
+[Unreleased]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.7.1...HEAD
+[1.7.1]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.7.0...v1.7.1
 [1.7.0]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.6.5...v1.7.0
 [1.6.5]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.6.4...v1.6.5
 [1.6.4]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.6.3...v1.6.4
