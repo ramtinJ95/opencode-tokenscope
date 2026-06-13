@@ -113,14 +113,13 @@ export class ModelMetadataResolver {
       const bundledPricing = basePricing[modelKey] ?? (bareModelKey ? basePricing[bareModelKey] : undefined)
       if (!this.canMergeLivePricing(bundledPricing, pricing)) continue
 
-      merged[modelKey] = this.mergeModelPricing(basePricing[modelKey], pricing)
+      merged[modelKey] = this.mergeModelPricing(bundledPricing, pricing)
 
-      if (
-        bareModelKey &&
-        liveBareKeyCounts.get(bareModelKey) === 1 &&
-        this.canMergeLivePricing(basePricing[bareModelKey] ?? bundledPricing, pricing)
-      ) {
-        merged[bareModelKey] = this.mergeModelPricing(basePricing[bareModelKey], pricing)
+      if (bareModelKey && liveBareKeyCounts.get(bareModelKey) === 1) {
+        const bareAliasPricing = basePricing[bareModelKey] ?? bundledPricing
+        if (this.canMergeLivePricing(bareAliasPricing, pricing)) {
+          merged[bareModelKey] = this.mergeModelPricing(bareAliasPricing, pricing)
+        }
       }
     }
     return merged

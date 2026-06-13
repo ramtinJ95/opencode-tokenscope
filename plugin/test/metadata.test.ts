@@ -303,6 +303,76 @@ test("ModelMetadataResolver can merge incomplete live metadata into bundled pric
   })
 })
 
+test("ModelMetadataResolver uses bare bundled aliases for incomplete provider pricing", async () => {
+  const client = {
+    provider: {
+      async list() {
+        return {
+          all: [
+            {
+              id: "custom",
+              models: {
+                known: {
+                  id: "known",
+                  cost: { cache: { read: 0.2, write: 2 } },
+                },
+              },
+            },
+          ],
+        }
+      },
+    },
+  }
+
+  const pricing = await new ModelMetadataResolver(client).mergePricingData({
+    known: { input: 5, output: 10, cacheRead: 0.5, cacheWrite: 5 },
+  })
+
+  expect(pricing["custom/known"]).toEqual({
+    input: 5,
+    output: 10,
+    cacheRead: 0.2,
+    cacheWrite: 2,
+    contextWindow: undefined,
+    contextOver200k: undefined,
+  })
+})
+
+test("ModelMetadataResolver uses provider bundled pricing for partial live bare aliases", async () => {
+  const client = {
+    provider: {
+      async list() {
+        return {
+          all: [
+            {
+              id: "custom",
+              models: {
+                known: {
+                  id: "known",
+                  cost: { cache: { read: 0.2, write: 2 } },
+                },
+              },
+            },
+          ],
+        }
+      },
+    },
+  }
+
+  const pricing = await new ModelMetadataResolver(client).mergePricingData({
+    "custom/known": { input: 5, output: 10, cacheRead: 0.5, cacheWrite: 5 },
+  })
+
+  expect(pricing.known).toEqual({
+    input: 5,
+    output: 10,
+    cacheRead: 0.2,
+    cacheWrite: 2,
+    contextWindow: undefined,
+    contextOver200k: undefined,
+  })
+})
+
 test("ModelMetadataResolver preserves bundled cache pricing when live metadata omits cache rates", async () => {
   const client = {
     provider: {
