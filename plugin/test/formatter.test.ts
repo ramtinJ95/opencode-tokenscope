@@ -37,8 +37,9 @@ test("formats optional detailed subagent breakdowns when enabled", () => {
 
   expect(report).toContain("Tokens: fresh 500 | cache read 10,000 | cache write 0 | output 200 | reasoning 25")
   expect(report).toContain(
-    "Estimated split: fresh $0.0015 | cache read $0.0030 | cache write $0.0000 | output+reasoning $0.0004"
+    "Estimated API-rate split: fresh $0.0015 | cache read $0.0030 | cache write $0.0000 | output+reasoning $0.0004 (estimated total $0.0048 | actual API total $0.0042)"
   )
+  expect(report).toContain("the displayed subagent cost is actual API cost")
   expect(report).toContain("Subagent Total:")
 })
 

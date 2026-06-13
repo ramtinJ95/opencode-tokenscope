@@ -359,7 +359,8 @@ export class OutputFormatter {
       lines.push(`\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
       lines.push(``)
       if (this.config?.enableDetailedSubagentCostBreakdown) {
-        lines.push(`Detailed lines show token buckets plus estimated API-equivalent cost splits.`)
+        const costBasis = cost.isSubscription ? "the displayed subagent cost is the estimate" : "the displayed subagent cost is actual API cost"
+        lines.push(`Detailed lines show token buckets plus estimated API-rate splits; ${costBasis}.`)
         lines.push(``)
       }
       for (const subagent of subagentAnalysis.subagents) {
@@ -377,6 +378,8 @@ export class OutputFormatter {
               cacheWriteTokens: subagent.cacheWriteTokens,
               outputTokens: subagent.outputTokens,
               reasoningTokens: subagent.reasoningTokens,
+              actualCost: cost.isSubscription ? undefined : subagent.apiCost,
+              estimatedTotalCost: subagent.estimatedCost,
               estimatedInputCost: subagent.estimatedInputCost,
               estimatedCacheReadCost: subagent.estimatedCacheReadCost,
               estimatedCacheWriteCost: subagent.estimatedCacheWriteCost,
@@ -398,6 +401,8 @@ export class OutputFormatter {
               cacheWriteTokens: subagentAnalysis.totalCacheWriteTokens,
               outputTokens: subagentAnalysis.totalOutputTokens,
               reasoningTokens: subagentAnalysis.totalReasoningTokens,
+              actualCost: cost.isSubscription ? undefined : subagentAnalysis.totalApiCost,
+              estimatedTotalCost: subagentAnalysis.totalEstimatedCost,
               estimatedInputCost: subagentAnalysis.estimatedInputCost,
               estimatedCacheReadCost: subagentAnalysis.estimatedCacheReadCost,
               estimatedCacheWriteCost: subagentAnalysis.estimatedCacheWriteCost,

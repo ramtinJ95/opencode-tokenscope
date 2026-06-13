@@ -429,7 +429,7 @@ Example user override:
 ```
 
 Set any option to `false` to hide that section from the output.
-Set `enableDetailedSubagentCostBreakdown` to `true` to expand the subagent section with per-session token buckets and estimated cost splits.
+Set `enableDetailedSubagentCostBreakdown` to `true` to expand the subagent section with per-session token buckets and estimated API-rate cost splits. In API-key sessions, the main subagent cost remains OpenCode's actual recorded API cost, so the estimated split may not sum exactly to that value.
 
 ## Troubleshooting
 

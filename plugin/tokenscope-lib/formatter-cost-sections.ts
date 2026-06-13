@@ -7,6 +7,8 @@ export interface DetailedSubagentBreakdown {
   cacheWriteTokens: number
   outputTokens: number
   reasoningTokens: number
+  actualCost?: number
+  estimatedTotalCost?: number
   estimatedInputCost: number
   estimatedCacheReadCost: number
   estimatedCacheWriteCost: number
@@ -45,6 +47,13 @@ export function formatDetailedSubagentBreakdownLines(
   indent = "    "
 ): string[] {
   const outputLabel = breakdown.reasoningTokens > 0 ? "output+reasoning" : "output"
+  const estimatedTotalCost =
+    breakdown.estimatedTotalCost ??
+    breakdown.estimatedInputCost +
+      breakdown.estimatedCacheReadCost +
+      breakdown.estimatedCacheWriteCost +
+      breakdown.estimatedOutputCost
+  const actualCost = breakdown.actualCost === undefined ? "" : ` | actual API total $${breakdown.actualCost.toFixed(4)}`
   const tokenParts = [
     `fresh ${formatNumber(breakdown.freshInputTokens)}`,
     `cache read ${formatNumber(breakdown.cacheReadTokens)}`,
@@ -58,7 +67,7 @@ export function formatDetailedSubagentBreakdownLines(
 
   return [
     `${indent}Tokens: ${tokenParts.join(" | ")}`,
-    `${indent}Estimated split: fresh $${breakdown.estimatedInputCost.toFixed(4)} | cache read $${breakdown.estimatedCacheReadCost.toFixed(4)} | cache write $${breakdown.estimatedCacheWriteCost.toFixed(4)} | ${outputLabel} $${breakdown.estimatedOutputCost.toFixed(4)}`,
+    `${indent}Estimated API-rate split: fresh $${breakdown.estimatedInputCost.toFixed(4)} | cache read $${breakdown.estimatedCacheReadCost.toFixed(4)} | cache write $${breakdown.estimatedCacheWriteCost.toFixed(4)} | ${outputLabel} $${breakdown.estimatedOutputCost.toFixed(4)} (estimated total $${estimatedTotalCost.toFixed(4)}${actualCost})`,
   ]
 }
 
