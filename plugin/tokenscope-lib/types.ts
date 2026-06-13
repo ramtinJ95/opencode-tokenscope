@@ -206,7 +206,14 @@ export interface ModelCostEstimate extends ModelTokenUsage, TokenCostBreakdown {
   hasPricing: boolean
 }
 
-export interface SubagentSummary {
+export interface EstimatedCostComponents {
+  estimatedInputCost: number
+  estimatedOutputCost: number
+  estimatedCacheReadCost: number
+  estimatedCacheWriteCost: number
+}
+
+export interface SubagentSummary extends EstimatedCostComponents {
   sessionID: string
   title: string
   agentType: string
@@ -222,7 +229,7 @@ export interface SubagentSummary {
   apiCallCount: number
 }
 
-export interface SubagentAnalysis {
+export interface SubagentAnalysis extends EstimatedCostComponents {
   subagents: SubagentSummary[]
   totalInputTokens: number
   totalOutputTokens: number
@@ -363,6 +370,7 @@ export interface TokenscopeConfig {
   enableToolSchemaEstimation: boolean
   enableCacheEfficiency: boolean
   enableSubagentAnalysis: boolean
+  enableDetailedSubagentCostBreakdown: boolean
   enableSkillAnalysis: boolean
 }
 

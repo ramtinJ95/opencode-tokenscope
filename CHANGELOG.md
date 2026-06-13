@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Added an opt-in `enableDetailedSubagentCostBreakdown` config flag that expands subagent report sections with fresh input, cache read, cache write, output, and reasoning token buckets plus estimated per-bucket costs.
+
 ## [1.7.0] - 2026-06-07
 
 ### Added

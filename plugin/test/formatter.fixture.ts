@@ -98,6 +98,10 @@ export function buildFormatterFixtureAnalysis(): TokenAnalysis {
           totalTokens: 10_725,
           apiCost: 0.0042,
           estimatedCost: 0.0048,
+          estimatedInputCost: 0.0015,
+          estimatedOutputCost: 0.000375,
+          estimatedCacheReadCost: 0.003,
+          estimatedCacheWriteCost: 0,
           assistantMessageCount: 1,
           apiCallCount: 1,
         },
@@ -111,6 +115,10 @@ export function buildFormatterFixtureAnalysis(): TokenAnalysis {
       totalApiCost: 0.0042,
       totalEstimatedCost: 0.0048,
       totalApiCalls: 1,
+      estimatedInputCost: 0.0015,
+      estimatedOutputCost: 0.000375,
+      estimatedCacheReadCost: 0.003,
+      estimatedCacheWriteCost: 0,
     },
     contextBreakdown: {
       baseSystemPrompt: { tokens: 1_500, identified: false },
@@ -173,6 +181,7 @@ export function buildFormatterFixtureReport(): string {
     enableToolSchemaEstimation: true,
     enableCacheEfficiency: true,
     enableSubagentAnalysis: true,
+    enableDetailedSubagentCostBreakdown: false,
     enableSkillAnalysis: true,
   })
 

@@ -3,7 +3,9 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
-import { buildFormatterFixtureReport } from "./formatter.fixture.js"
+import { CostCalculator } from "../tokenscope-lib/cost.js"
+import { OutputFormatter } from "../tokenscope-lib/formatter.js"
+import { buildFormatterFixtureAnalysis, buildFormatterFixtureReport } from "./formatter.fixture.js"
 
 const testDir = path.dirname(fileURLToPath(import.meta.url))
 
@@ -11,4 +13,89 @@ test("formats the full token report without changing layout", async () => {
   const expected = await fs.readFile(path.join(testDir, "fixtures", "formatter-full-report.txt"), "utf8")
 
   expect(buildFormatterFixtureReport()).toBe(expected)
+})
+
+test("formats optional detailed subagent breakdowns when enabled", () => {
+  const formatter = new OutputFormatter(
+    new CostCalculator({
+      "anthropic/claude-sonnet-4-20250514": { input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 },
+      "google/gemini-2.5-flash": { input: 0.3, output: 2.5, cacheWrite: 0, cacheRead: 0.075 },
+      default: { input: 1, output: 3, cacheWrite: 0, cacheRead: 0 },
+    })
+  )
+
+  formatter.setConfig({
+    enableContextBreakdown: true,
+    enableToolSchemaEstimation: true,
+    enableCacheEfficiency: true,
+    enableSubagentAnalysis: true,
+    enableDetailedSubagentCostBreakdown: true,
+    enableSkillAnalysis: true,
+  })
+
+  const report = formatter.format(buildFormatterFixtureAnalysis())
+
+  expect(report).toContain("Tokens: fresh 500 | cache read 10,000 | cache write 0 | output 200 | reasoning 25")
+  expect(report).toContain(
+    "Estimated API-rate split: fresh $0.0015 | cache read $0.0030 | cache write $0.0000 | output+reasoning $0.0004 (estimated total $0.0048 | actual API total $0.0042)"
+  )
+  expect(report).toContain("displayed subagent costs use actual child API cost")
+  expect(report).toContain("Subagent Total:")
+})
+
+test("formats actual subagent API costs even when the main session is subscription", () => {
+  const formatter = new OutputFormatter(
+    new CostCalculator({
+      "anthropic/claude-sonnet-4-20250514": { input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 },
+      "google/gemini-2.5-flash": { input: 0.3, output: 2.5, cacheWrite: 0, cacheRead: 0.075 },
+      default: { input: 1, output: 3, cacheWrite: 0, cacheRead: 0 },
+    })
+  )
+
+  formatter.setConfig({
+    enableContextBreakdown: true,
+    enableToolSchemaEstimation: true,
+    enableCacheEfficiency: true,
+    enableSubagentAnalysis: true,
+    enableDetailedSubagentCostBreakdown: true,
+    enableSkillAnalysis: true,
+  })
+
+  const report = formatter.format({
+    ...buildFormatterFixtureAnalysis(),
+    sessionCost: 0,
+  })
+
+  expect(report).toContain("reviewer                     $0.0042")
+  expect(report).toContain("actual API total $0.0042")
+  expect(report).toContain("displayed subagent costs use actual child API cost")
+  expect(report).not.toContain("the displayed subagent cost is the estimate")
+})
+
+test("formats subscription reports with public estimate wording", () => {
+  const formatter = new OutputFormatter(
+    new CostCalculator({
+      "anthropic/claude-sonnet-4-20250514": { input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 },
+      "google/gemini-2.5-flash": { input: 0.3, output: 2.5, cacheWrite: 0, cacheRead: 0.075 },
+      default: { input: 1, output: 3, cacheWrite: 0, cacheRead: 0 },
+    })
+  )
+
+  formatter.setConfig({
+    enableContextBreakdown: true,
+    enableToolSchemaEstimation: true,
+    enableCacheEfficiency: true,
+    enableSubagentAnalysis: true,
+    enableDetailedSubagentCostBreakdown: false,
+    enableSkillAnalysis: true,
+  })
+
+  const report = formatter.format({
+    ...buildFormatterFixtureAnalysis(),
+    sessionCost: 0,
+  })
+
+  expect(report).toContain("ESTIMATED SESSION COST (API Key Pricing)")
+  expect(report).toContain("public token cost estimate is shown below")
+  expect(report).not.toContain("API cost is $0")
 })

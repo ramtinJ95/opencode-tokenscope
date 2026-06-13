@@ -303,6 +303,76 @@ test("ModelMetadataResolver can merge incomplete live metadata into bundled pric
   })
 })
 
+test("ModelMetadataResolver uses bare bundled aliases for incomplete provider pricing", async () => {
+  const client = {
+    provider: {
+      async list() {
+        return {
+          all: [
+            {
+              id: "custom",
+              models: {
+                known: {
+                  id: "known",
+                  cost: { cache: { read: 0.2, write: 2 } },
+                },
+              },
+            },
+          ],
+        }
+      },
+    },
+  }
+
+  const pricing = await new ModelMetadataResolver(client).mergePricingData({
+    known: { input: 5, output: 10, cacheRead: 0.5, cacheWrite: 5 },
+  })
+
+  expect(pricing["custom/known"]).toEqual({
+    input: 5,
+    output: 10,
+    cacheRead: 0.2,
+    cacheWrite: 2,
+    contextWindow: undefined,
+    contextOver200k: undefined,
+  })
+})
+
+test("ModelMetadataResolver uses provider bundled pricing for partial live bare aliases", async () => {
+  const client = {
+    provider: {
+      async list() {
+        return {
+          all: [
+            {
+              id: "custom",
+              models: {
+                known: {
+                  id: "known",
+                  cost: { cache: { read: 0.2, write: 2 } },
+                },
+              },
+            },
+          ],
+        }
+      },
+    },
+  }
+
+  const pricing = await new ModelMetadataResolver(client).mergePricingData({
+    "custom/known": { input: 5, output: 10, cacheRead: 0.5, cacheWrite: 5 },
+  })
+
+  expect(pricing.known).toEqual({
+    input: 5,
+    output: 10,
+    cacheRead: 0.2,
+    cacheWrite: 2,
+    contextWindow: undefined,
+    contextOver200k: undefined,
+  })
+})
+
 test("ModelMetadataResolver preserves bundled cache pricing when live metadata omits cache rates", async () => {
   const client = {
     provider: {
@@ -369,6 +439,41 @@ test("ModelMetadataResolver updates bundled bare model aliases with live pricing
 
   expect(pricing["claude-sonnet-4-20250514"]).toMatchObject({ input: 4, output: 16, cacheRead: 0.4, cacheWrite: 4 })
   expect(pricing["anthropic/claude-sonnet-4-20250514"]).toMatchObject({ input: 4, output: 16, cacheRead: 0.4, cacheWrite: 4 })
+})
+
+test("ModelMetadataResolver keeps bundled pricing when live provider metadata reports zero subscription rates", async () => {
+  const client = {
+    provider: {
+      async list() {
+        return {
+          all: [
+            {
+              id: "openai",
+              models: {
+                "gpt-5.4-mini": {
+                  id: "gpt-5.4-mini",
+                  cost: {
+                    input: 0,
+                    output: 0,
+                    cache: { read: 0, write: 0 },
+                  },
+                },
+              },
+            },
+          ],
+        }
+      },
+    },
+  }
+
+  const bundled = {
+    default: { input: 1, output: 3, cacheRead: 0, cacheWrite: 0 },
+    "openai/gpt-5.4-mini": { input: 0.75, output: 4.5, cacheRead: 0.075, cacheWrite: 0 },
+  }
+
+  const pricing = await new ModelMetadataResolver(client).mergePricingData(bundled)
+
+  expect(pricing["openai/gpt-5.4-mini"]).toEqual(bundled["openai/gpt-5.4-mini"])
 })
 
 test("ModelMetadataResolver does not overwrite bare aliases when live model IDs are ambiguous", async () => {

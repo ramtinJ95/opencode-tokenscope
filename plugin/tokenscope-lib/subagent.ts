@@ -1,6 +1,6 @@
 // SubagentAnalyzer - analyzes child sessions from Task tool calls
 
-import type { SessionMessage, SubagentSummary, SubagentAnalysis, ChildSession } from "./types.js"
+import type { SessionMessage, SubagentSummary, SubagentAnalysis, ChildSession, EstimatedCostComponents } from "./types.js"
 import { CostCalculator } from "./cost.js"
 import { fetchSessionChildren, fetchSessionMessages, type RoutingParams, unwrapResponseData } from "./opencode.js"
 import { summarizeTelemetry } from "./telemetry.js"
@@ -26,6 +26,10 @@ export class SubagentAnalyzer {
       totalApiCost: 0,
       totalEstimatedCost: 0,
       totalApiCalls: 0,
+      estimatedInputCost: 0,
+      estimatedOutputCost: 0,
+      estimatedCacheReadCost: 0,
+      estimatedCacheWriteCost: 0,
     }
 
     try {
@@ -47,6 +51,10 @@ export class SubagentAnalyzer {
           result.totalApiCost += summary.apiCost
           result.totalEstimatedCost += summary.estimatedCost
           result.totalApiCalls += summary.apiCallCount
+          result.estimatedInputCost += summary.estimatedInputCost
+          result.estimatedOutputCost += summary.estimatedOutputCost
+          result.estimatedCacheReadCost += summary.estimatedCacheReadCost
+          result.estimatedCacheWriteCost += summary.estimatedCacheWriteCost
         }
 
         const nestedAnalysis = await this.analyzeChildSessions(child.id)
@@ -62,6 +70,10 @@ export class SubagentAnalyzer {
         result.totalApiCost += nestedAnalysis.totalApiCost
         result.totalEstimatedCost += nestedAnalysis.totalEstimatedCost
         result.totalApiCalls += nestedAnalysis.totalApiCalls
+        result.estimatedInputCost += nestedAnalysis.estimatedInputCost
+        result.estimatedOutputCost += nestedAnalysis.estimatedOutputCost
+        result.estimatedCacheReadCost += nestedAnalysis.estimatedCacheReadCost
+        result.estimatedCacheWriteCost += nestedAnalysis.estimatedCacheWriteCost
       }
     } catch (error) {
       this.warnings?.add(
@@ -87,8 +99,23 @@ export class SubagentAnalyzer {
 
       for (const message of messages) {
         if (message.info.role !== "assistant") continue
-        const messageProviderID = message.info.providerID ?? message.info.model?.providerID
-        const messageModelID = message.info.modelID ?? message.info.model?.modelID ?? message.info.model?.id
+        const messageProviderID =
+          message.data?.providerID ??
+          message.data?.model?.providerID ??
+          message.info.providerID ??
+          message.info.model?.providerID ??
+          message.providerID ??
+          message.model?.providerID
+        const messageModelID =
+          message.data?.modelID ??
+          message.data?.model?.modelID ??
+          message.data?.model?.id ??
+          message.info.modelID ??
+          message.info.model?.modelID ??
+          message.info.model?.id ??
+          message.modelID ??
+          message.model?.modelID ??
+          message.model?.id
 
         if (messageProviderID) providerID = messageProviderID
         if (messageModelID) modelName = messageModelID
@@ -104,7 +131,7 @@ export class SubagentAnalyzer {
       const apiCallCount = telemetry.apiCallCount
       const totalTokens = inputTokens + outputTokens + reasoningTokens + cacheReadTokens + cacheWriteTokens
       const fallbackPricingModelName = this.costCalculator.buildLookupKey(providerID, modelName) || modelName
-      const estimatedCost = telemetry.perModelUsage.reduce((sum, modelUsage) => {
+      const estimatedCosts = telemetry.perModelUsage.reduce<EstimatedCostComponents & { estimatedCost: number }>((sum, modelUsage) => {
         const pricingModelName = this.costCalculator.resolvePricingModelName(modelUsage, fallbackPricingModelName)
         if (!this.costCalculator.hasPricing(pricingModelName)) {
           this.warnings?.add(
@@ -113,8 +140,21 @@ export class SubagentAnalyzer {
           )
         }
         const pricing = this.costCalculator.getPricing(pricingModelName)
-        return sum + this.costCalculator.calculateModelUsageCost(modelUsage, pricing).estimatedSessionCost
-      }, 0)
+        const usageCost = this.costCalculator.calculateModelUsageCost(modelUsage, pricing)
+
+        sum.estimatedCost += usageCost.estimatedSessionCost
+        sum.estimatedInputCost += usageCost.estimatedInputCost
+        sum.estimatedOutputCost += usageCost.estimatedOutputCost
+        sum.estimatedCacheReadCost += usageCost.estimatedCacheReadCost
+        sum.estimatedCacheWriteCost += usageCost.estimatedCacheWriteCost
+        return sum
+      }, {
+        estimatedCost: 0,
+        estimatedInputCost: 0,
+        estimatedOutputCost: 0,
+        estimatedCacheReadCost: 0,
+        estimatedCacheWriteCost: 0,
+      })
 
       return {
         sessionID: child.id,
@@ -127,7 +167,11 @@ export class SubagentAnalyzer {
         cacheWriteTokens,
         totalTokens,
         apiCost,
-        estimatedCost,
+        estimatedCost: estimatedCosts.estimatedCost,
+        estimatedInputCost: estimatedCosts.estimatedInputCost,
+        estimatedOutputCost: estimatedCosts.estimatedOutputCost,
+        estimatedCacheReadCost: estimatedCosts.estimatedCacheReadCost,
+        estimatedCacheWriteCost: estimatedCosts.estimatedCacheWriteCost,
         assistantMessageCount,
         apiCallCount,
       }

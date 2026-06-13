@@ -123,10 +123,10 @@ export class ModelResolver {
 
   private getProviderID(message: SessionMessage): string | undefined {
     return (
-      message.info.providerID ??
-      message.info.model?.providerID ??
       message.data?.providerID ??
       message.data?.model?.providerID ??
+      message.info.providerID ??
+      message.info.model?.providerID ??
       message.providerID ??
       message.model?.providerID
     )
@@ -134,12 +134,12 @@ export class ModelResolver {
 
   private getModelID(message: SessionMessage): string | undefined {
     return (
-      message.info.modelID ??
-      message.info.model?.modelID ??
-      message.info.model?.id ??
       message.data?.modelID ??
       message.data?.model?.modelID ??
       message.data?.model?.id ??
+      message.info.modelID ??
+      message.info.model?.modelID ??
+      message.info.model?.id ??
       message.modelID ??
       message.model?.modelID ??
       message.model?.id
