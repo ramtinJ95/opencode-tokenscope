@@ -136,6 +136,19 @@ export class OutputFormatter {
     const lines: string[] = []
     const sessionTotal = inputTokens + cacheReadTokens + cacheWriteTokens + outputTokens + reasoningTokens
     const mainCost = cost.isSubscription ? cost.estimatedSessionCost : cost.apiSessionCost
+    const subagentDisplayCost = (apiCost: number, estimatedCost: number) => (apiCost > 0 ? apiCost : estimatedCost)
+    const subagentTotalDisplayCost =
+      subagentAnalysis?.subagents.reduce(
+        (sum, subagent) => sum + subagentDisplayCost(subagent.apiCost, subagent.estimatedCost),
+        0
+      ) ?? 0
+    const hasActualSubagentCost = subagentAnalysis?.subagents.some((subagent) => subagent.apiCost > 0) ?? false
+    const hasEstimatedSubagentCost = subagentAnalysis?.subagents.some((subagent) => subagent.apiCost <= 0) ?? false
+    const subagentCostBasis = hasActualSubagentCost
+      ? hasEstimatedSubagentCost
+        ? "displayed subagent costs use actual child API cost when available, otherwise estimated API-rate cost"
+        : "displayed subagent costs use actual child API cost"
+      : "displayed subagent costs use estimated API-rate cost"
 
     // Header
     lines.push(`\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550`)
@@ -347,9 +360,6 @@ export class OutputFormatter {
     // 10. SUBAGENT COSTS (if any)
     if (subagentAnalysis && subagentAnalysis.subagents.length > 0) {
       const subagentLabelWidth = 25
-      const subagentTotalCost = cost.isSubscription
-        ? subagentAnalysis.totalEstimatedCost
-        : subagentAnalysis.totalApiCost
 
       lines.push(``)
       lines.push(`\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550`)
@@ -359,15 +369,12 @@ export class OutputFormatter {
       lines.push(`\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
       lines.push(``)
       if (this.config?.enableDetailedSubagentCostBreakdown) {
-        const costBasis = cost.isSubscription ? "the displayed subagent cost is the estimate" : "the displayed subagent cost is actual API cost"
-        lines.push(`Detailed lines show token buckets plus estimated API-rate splits; ${costBasis}.`)
+        lines.push(`Detailed lines show token buckets plus estimated API-rate splits; ${subagentCostBasis}.`)
         lines.push(``)
       }
       for (const subagent of subagentAnalysis.subagents) {
         const label = `${subagent.agentType}`.padEnd(subagentLabelWidth)
-        const costStr = cost.isSubscription
-          ? `$${subagent.estimatedCost.toFixed(4)}`
-          : `$${subagent.apiCost.toFixed(4)}`
+        const costStr = `$${subagentDisplayCost(subagent.apiCost, subagent.estimatedCost).toFixed(4)}`
         const tokensStr = `(${formatNumber(subagent.totalTokens)} tokens, ${subagent.apiCallCount} calls)`
         lines.push(`  ${label} ${costStr.padStart(10)}  ${tokensStr}`)
         if (this.config?.enableDetailedSubagentCostBreakdown) {
@@ -378,7 +385,7 @@ export class OutputFormatter {
               cacheWriteTokens: subagent.cacheWriteTokens,
               outputTokens: subagent.outputTokens,
               reasoningTokens: subagent.reasoningTokens,
-              actualCost: cost.isSubscription ? undefined : subagent.apiCost,
+              actualCost: subagent.apiCost > 0 ? subagent.apiCost : undefined,
               estimatedTotalCost: subagent.estimatedCost,
               estimatedInputCost: subagent.estimatedInputCost,
               estimatedCacheReadCost: subagent.estimatedCacheReadCost,
@@ -390,7 +397,7 @@ export class OutputFormatter {
       }
       lines.push(`\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
       lines.push(
-        `Subagent Total:${" ".repeat(subagentLabelWidth - 14)} $${subagentTotalCost.toFixed(4)}  (${formatNumber(subagentAnalysis.totalTokens)} tokens, ${subagentAnalysis.totalApiCalls} calls)`
+        `Subagent Total:${" ".repeat(subagentLabelWidth - 14)} $${subagentTotalDisplayCost.toFixed(4)}  (${formatNumber(subagentAnalysis.totalTokens)} tokens, ${subagentAnalysis.totalApiCalls} calls)`
       )
       if (this.config?.enableDetailedSubagentCostBreakdown) {
         lines.push(
@@ -401,7 +408,7 @@ export class OutputFormatter {
               cacheWriteTokens: subagentAnalysis.totalCacheWriteTokens,
               outputTokens: subagentAnalysis.totalOutputTokens,
               reasoningTokens: subagentAnalysis.totalReasoningTokens,
-              actualCost: cost.isSubscription ? undefined : subagentAnalysis.totalApiCost,
+              actualCost: subagentAnalysis.totalApiCost > 0 ? subagentAnalysis.totalApiCost : undefined,
               estimatedTotalCost: subagentAnalysis.totalEstimatedCost,
               estimatedInputCost: subagentAnalysis.estimatedInputCost,
               estimatedCacheReadCost: subagentAnalysis.estimatedCacheReadCost,
@@ -423,10 +430,7 @@ export class OutputFormatter {
     lines.push(`                          Cost        Tokens          API Calls`)
 
     if (subagentAnalysis && subagentAnalysis.subagents.length > 0) {
-      const subagentTotalCost = cost.isSubscription
-        ? subagentAnalysis.totalEstimatedCost
-        : subagentAnalysis.totalApiCost
-      const grandTotalCost = mainCost + subagentTotalCost
+      const grandTotalCost = mainCost + subagentTotalDisplayCost
       const grandTotalTokens = sessionTotal + subagentAnalysis.totalTokens
       const grandTotalApiCalls = apiCallCount + subagentAnalysis.totalApiCalls
 
@@ -434,7 +438,7 @@ export class OutputFormatter {
         `  Main session:      $${mainCost.toFixed(4).padStart(10)}    ${formatNumber(sessionTotal).padStart(10)}         ${apiCallCount.toString().padStart(5)}`
       )
       lines.push(
-        `  Subagents:         $${subagentTotalCost.toFixed(4).padStart(10)}    ${formatNumber(subagentAnalysis.totalTokens).padStart(10)}         ${subagentAnalysis.totalApiCalls.toString().padStart(5)}`
+        `  Subagents:         $${subagentTotalDisplayCost.toFixed(4).padStart(10)}    ${formatNumber(subagentAnalysis.totalTokens).padStart(10)}         ${subagentAnalysis.totalApiCalls.toString().padStart(5)}`
       )
       lines.push(`\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
       lines.push(
