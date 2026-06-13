@@ -1,5 +1,8 @@
 // ContextAnalyzer - analyzes context breakdown from opencode export
 
+import { spawn } from "node:child_process"
+import type { Readable } from "node:stream"
+
 import type {
   ContextBreakdown,
   ContextComponent,
@@ -26,15 +29,59 @@ interface ToolListItem {
 }
 
 type ExportCommandRunner = (sessionID: string, directory?: string) => Promise<string>
-
-const defaultExportCommandRunner: ExportCommandRunner = async (sessionID, directory) => {
-  const { $ } = await import("bun")
-  // Use .quiet() to capture streams separately, then use only stdout.
-  // This avoids stderr ("Exporting session:") being mixed with JSON.
-  const command = $`opencode export ${sessionID}`
-  const { stdout } = await (directory ? command.cwd(directory) : command).quiet()
-  return stdout.toString()
+type ExportSpawnOptions = {
+  cwd?: string
+  shell: boolean
+  stdio: ["ignore", "pipe", "pipe"]
+  windowsHide: true
 }
+type ExportSpawnProcess = {
+  stdout: Readable
+  stderr: Readable
+  on(event: "error", listener: (error: Error) => void): unknown
+  on(event: "close", listener: (code: number | null, signal: NodeJS.Signals | null) => void): unknown
+}
+type ExportSpawn = (command: string, args: string[], options: ExportSpawnOptions) => ExportSpawnProcess
+
+export function createExportCommandRunner(
+  spawnCommand: ExportSpawn = spawn as unknown as ExportSpawn,
+  platform: NodeJS.Platform = process.platform
+): ExportCommandRunner {
+  return async (sessionID, directory) => new Promise((resolve, reject) => {
+    const child = spawnCommand("opencode", ["export", sessionID], {
+      cwd: directory,
+      shell: platform === "win32",
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+    })
+
+    let stdout = ""
+    let stderr = ""
+
+    child.stdout.setEncoding("utf8")
+    child.stderr.setEncoding("utf8")
+
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk
+    })
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk
+    })
+    child.on("error", reject)
+    child.on("close", (code, signal) => {
+      if (code === 0) {
+        resolve(stdout)
+        return
+      }
+
+      const reason = signal ? `signal ${signal}` : `code ${code}`
+      const detail = stderr.trim() ? `: ${stderr.trim()}` : ""
+      reject(new Error(`opencode export exited with ${reason}${detail}`))
+    })
+  })
+}
+
+export const defaultExportCommandRunner: ExportCommandRunner = createExportCommandRunner()
 
 export class ContextAnalyzer {
   private tokenizerManager: TokenizerManager
