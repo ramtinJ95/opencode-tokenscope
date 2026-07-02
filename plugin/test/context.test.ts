@@ -7,6 +7,7 @@ import { PassThrough } from "node:stream"
 
 import { ContextAnalyzer, createExportCommandRunner, defaultExportCommandRunner } from "../tokenscope-lib/context.js"
 import type { ExportedSession, TokenModel } from "../tokenscope-lib/types.js"
+import { WarningCollector } from "../tokenscope-lib/warnings.js"
 
 const tokenModel: TokenModel = { name: "test", spec: { kind: "approx" } }
 
@@ -181,6 +182,82 @@ test("context export runs from the session directory", async () => {
   )
 
   expect(calls).toEqual([{ sessionID: "ses_test", directory: "/tmp/project" }])
+})
+
+test("context export falls back to SDK session messages when opencode CLI is unavailable", async () => {
+  const warnings = new WarningCollector()
+  const calls: any[] = []
+  const client = {
+    session: {
+      async messages(input: any) {
+        calls.push(input)
+        return [
+          {
+            info: { id: "msg_assistant", role: "assistant" },
+            parts: [
+              {
+                type: "step-finish",
+                tokens: { input: 100, output: 10, cache: { read: 0, write: 2_000 }, reasoning: 0 },
+              },
+            ],
+          },
+        ]
+      },
+    },
+  }
+  const analyzer = new ContextAnalyzer(tokenizer, warnings, client, "C:\\project", async () => {
+    throw new Error("'opencode' is not recognized")
+  })
+
+  const result = await analyzer.analyze(
+    "ses_win",
+    tokenModel,
+    { input: 1, output: 3, cacheRead: 0, cacheWrite: 0 },
+    {
+      enableContextBreakdown: true,
+      enableToolSchemaEstimation: false,
+      enableCacheEfficiency: true,
+      enableSubagentAnalysis: false,
+      enableDetailedSubagentCostBreakdown: false,
+      enableSkillAnalysis: false,
+    }
+  )
+
+  expect(result.contextBreakdown?.totalCachedContext).toBe(2_000)
+  expect(result.cacheEfficiency?.cacheWriteTokens).toBe(2_000)
+  expect(warnings.list()).toEqual([])
+  expect(calls).toEqual([
+    {
+      path: { id: "ses_win" },
+      query: { directory: "C:\\project" },
+      throwOnError: true,
+    },
+  ])
+})
+
+test("context export reports both CLI and SDK failures when fallback cannot load messages", async () => {
+  const warnings = new WarningCollector()
+  const analyzer = new ContextAnalyzer(tokenizer, warnings, undefined, undefined, async () => {
+    throw new Error("'opencode' is not recognized")
+  })
+
+  const result = await analyzer.analyze(
+    "ses_win",
+    tokenModel,
+    { input: 1, output: 3, cacheRead: 0, cacheWrite: 0 },
+    {
+      enableContextBreakdown: true,
+      enableToolSchemaEstimation: false,
+      enableCacheEfficiency: false,
+      enableSubagentAnalysis: false,
+      enableDetailedSubagentCostBreakdown: false,
+      enableSkillAnalysis: false,
+    }
+  )
+
+  expect(result).toEqual({})
+  expect(warnings.list()[0]).toContain("'opencode' is not recognized")
+  expect(warnings.list()[0]).toContain("SDK fallback failed: OpenCode session.messages API is unavailable")
 })
 
 test("default export runner captures only opencode export stdout", async () => {

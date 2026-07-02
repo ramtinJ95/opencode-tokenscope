@@ -19,7 +19,7 @@ import type {
 import { TokenizerManager } from "./tokenizer.js"
 import { collectTelemetryCalls, firstCacheWriteTokens, summarizeTelemetry } from "./telemetry.js"
 import { WarningCollector, formatErrorMessage } from "./warnings.js"
-import { fetchToolList, unwrapResponseData } from "./opencode.js"
+import { fetchSessionMessages, fetchToolList, unwrapResponseData } from "./opencode.js"
 
 interface ToolListItem {
   id: string
@@ -148,21 +148,45 @@ export class ContextAnalyzer {
    * Execute opencode export and parse the JSON output
    */
   private async runExport(sessionID: string): Promise<ExportedSession | null> {
+    let cliError: unknown
+
     try {
       const result = await this.exportCommandRunner(sessionID, this.directory)
+      return this.parseExportOutput(result)
+    } catch (error) {
+      cliError = error
+    }
 
-      if (!result.trim()) {
-        this.warnings?.add(`OpenCode export returned no data for session ${sessionID}. Context sections were skipped.`, `export-empty:${sessionID}`)
-        return null
-      }
-
-      return JSON.parse(result) as ExportedSession
+    try {
+      return await this.runSdkExport(sessionID)
     } catch (error) {
       this.warnings?.add(
-        `OpenCode export failed for session ${sessionID}. Context sections were skipped: ${formatErrorMessage(error)}`,
+        `OpenCode export failed for session ${sessionID}. Context sections were skipped: ${formatErrorMessage(cliError)}; SDK fallback failed: ${formatErrorMessage(error)}`,
         `export-failed:${sessionID}`
       )
       return null
+    }
+  }
+
+  private parseExportOutput(result: string): ExportedSession {
+    if (!result.trim()) {
+      throw new Error("OpenCode export returned no data")
+    }
+
+    return JSON.parse(result) as ExportedSession
+  }
+
+  private async runSdkExport(sessionID: string): Promise<ExportedSession> {
+    const response = await fetchSessionMessages(this.client, sessionID, { directory: this.directory })
+    const messages = unwrapResponseData<ExportedMessage[]>(response ?? [])
+
+    if (!Array.isArray(messages) || messages.length === 0) {
+      throw new Error("OpenCode session.messages returned no data")
+    }
+
+    return {
+      info: { id: sessionID, title: sessionID },
+      messages,
     }
   }
 
