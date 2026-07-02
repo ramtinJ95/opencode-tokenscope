@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.2] - 2026-07-02
+
+### Fixed
+
+- Fixed OpenCode Desktop context exports by falling back to the OpenCode SDK when the `opencode` CLI is unavailable.
+
 ## [1.7.1] - 2026-06-13
 
 ### Added
@@ -153,7 +159,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Synced READMEs and removed version tags from feature headers
 - Updated install script for better testing before npm push
 
-[Unreleased]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.7.1...HEAD
+[Unreleased]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.7.2...HEAD
+[1.7.2]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.7.1...v1.7.2
 [1.7.1]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.7.0...v1.7.1
 [1.7.0]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.6.5...v1.7.0
 [1.6.5]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.6.4...v1.6.5
