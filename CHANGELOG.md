@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-07-09
+
+### Added
+
+- Added OpenCode-compatible arbitrary and multiple context-price tiers, selected independently for every completed provider step before the legacy 200K fallback.
+- Added reconciliation between message-derived `step-finish` telemetry and OpenCode's session aggregate, with visible warnings when token buckets or recorded cost disagree.
+- Added explicit snapshot-boundary, retained-content, active-revert, missing-metadata, and approximate-tokenizer warnings so incomplete data cannot look exact.
+- Added adaptive precision for small USD values and per-million rates, preserving values such as `$0.00001234` and `$0.00875/M` in displayed formulas.
+- Added dedicated regression coverage for session reconciliation, current OpenCode skill formatting, tokenizer fallbacks, multi-tier pricing, report isolation, and cyclic child-session graphs.
+
+### Changed
+
+- Reframed reports into three distinct layers: locally tokenized retained content, recoverable OpenCode-recorded usage, and visibly labeled explanatory estimates.
+- Renamed API-call totals to completed provider steps and documented that the step invoking TokenScope, later report reads, and the final response are outside the snapshot.
+- Updated pricing estimates to use live OpenCode provider metadata first, with the bundled models.dev-derived catalog retained only as a warned fallback.
+- Updated skill accounting for OpenCode v1.17.18: the verbose permission-filtered catalog belongs to system context, while the static skill-tool description is counted separately from its schema.
+- Changed repeated skill accounting to tokenize and sum each persisted result instead of multiplying the first result size by the call count.
+- Changed zero-cost and mixed-cost reporting to distinguish OpenCode-recorded cost from public API-rate estimates without assuming a subscription or provider invoice.
+- Changed report output to unique, atomically written files in private per-invocation directories under OpenCode's temporary path, leaving analyzed worktrees untouched.
+- Changed updater behavior to reinstall declared dependencies before rebuilding, preventing stale plugin SDK and tokenizer packages from surviving an update.
+- Documented the v1.17.18 accuracy target and the remaining limits around generated system prompts, provider-transformed tools, compaction, reverts, and bundled-pricing freshness.
+
+### Fixed
+
+- Fixed sub-200K and multi-tier cost estimates, strict threshold selection, tier-before-legacy-fallback precedence, per-step tiering, and zero-valued omitted tier cache rates to match OpenCode.
+- Fixed cost formulas and labels so reasoning uses the output rate, fresh/cache-read/cache-write buckets remain non-overlapping, and displayed rates agree with the calculated totals.
+- Removed invalid system-prompt remainder inference that could double-count assistant history and removed the nonexistent fixed project-tree estimate.
+- Bounded heuristic context components so they cannot exceed the observed first cache-write bucket, which is now labeled as an allocation anchor rather than a context-window measurement.
+- Fixed OpenCode-hosted Claude and other non-OpenAI models being tokenized as OpenAI, mapped newer GPT/o-series models to the GPT-4o tokenizer family, and preserved real model names when tokenization is approximate.
+- Fixed silent tokenizer fallbacks by reporting unknown encodings, load failures, and encode failures before using an approximate count.
+- Fixed retained-content handling for `ignored:true` text, completed compacted tools, and replayable errored or interrupted tool results.
+- Fixed tool-schema reporting that implied current metadata was the exact historical enabled toolset; active-agent permissions, MCP additions, and provider transforms are now called out explicitly.
+- Fixed skill-catalog reconstruction that double-attributed an obsolete catalog-bearing tool description and made unavailable skill/agent metadata visible.
+- Fixed recursive subagent attribution by preferring the session's agent field and stopping duplicate or cyclic traversal.
+- Fixed unsafe pricing-prefix matches that could assign a related model's price without a valid model-version boundary.
+- Fixed concurrent report overwrites, repository pollution, shell-path handling, and stale fixed-filename instructions.
+
+### Security
+
+- Restricted report directories to owner-only permissions and report files to mode `0600` on Unix.
+- Added ownership, symlink, and writable-parent validation before writing potentially sensitive session reports under OpenCode's allowed temporary path.
+
 ## [1.7.2] - 2026-07-02
 
 ### Fixed
@@ -159,7 +201,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Synced READMEs and removed version tags from feature headers
 - Updated install script for better testing before npm push
 
-[Unreleased]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.7.2...HEAD
+[Unreleased]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.8.0...HEAD
+[1.8.0]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.7.2...v1.8.0
 [1.7.2]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.7.1...v1.7.2
 [1.7.1]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.7.0...v1.7.1
 [1.7.0]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.6.5...v1.7.0
