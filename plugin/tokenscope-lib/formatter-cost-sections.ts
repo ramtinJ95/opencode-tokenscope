@@ -1,5 +1,5 @@
 import type { CostEstimate, ModelCostEstimate } from "./types.js"
-import { formatNumber } from "./formatter-helpers.js"
+import { formatNumber, formatRate, formatUsd } from "./formatter-helpers.js"
 
 export interface DetailedSubagentBreakdown {
   freshInputTokens: number
@@ -25,7 +25,7 @@ export function formatCostEstimateLines(cost: CostEstimate): string[] {
   const lines: string[] = []
   for (const modelCost of cost.perModelCosts) {
     lines.push(
-      `  ${modelCost.modelName} (${modelCost.apiCallCount} call${modelCost.apiCallCount === 1 ? "" : "s"}): $${modelCost.estimatedSessionCost.toFixed(4)}`
+      `  ${modelCost.modelName} (${modelCost.apiCallCount} call${modelCost.apiCallCount === 1 ? "" : "s"}): $${formatUsd(modelCost.estimatedSessionCost)}`
     )
     if (!modelCost.hasPricing) {
       lines.push(`    Pricing not found; used fallback default rates.`)
@@ -34,10 +34,10 @@ export function formatCostEstimateLines(cost: CostEstimate): string[] {
   }
 
   lines.push(``)
-  lines.push(`  Blended input:      $${cost.estimatedInputCost.toFixed(4)}`)
-  lines.push(`  Blended output:     $${cost.estimatedOutputCost.toFixed(4)}`)
-  if (cost.cacheReadTokens > 0) lines.push(`  Blended cache read: $${cost.estimatedCacheReadCost.toFixed(4)}`)
-  if (cost.cacheWriteTokens > 0) lines.push(`  Blended cache write: $${cost.estimatedCacheWriteCost.toFixed(4)}`)
+  lines.push(`  Blended input:      $${formatUsd(cost.estimatedInputCost)}`)
+  lines.push(`  Blended output:     $${formatUsd(cost.estimatedOutputCost)}`)
+  if (cost.cacheReadTokens > 0) lines.push(`  Blended cache read: $${formatUsd(cost.estimatedCacheReadCost)}`)
+  if (cost.cacheWriteTokens > 0) lines.push(`  Blended cache write: $${formatUsd(cost.estimatedCacheWriteCost)}`)
 
   return lines
 }
@@ -53,7 +53,7 @@ export function formatDetailedSubagentBreakdownLines(
       breakdown.estimatedCacheReadCost +
       breakdown.estimatedCacheWriteCost +
       breakdown.estimatedOutputCost
-  const actualCost = breakdown.actualCost === undefined ? "" : ` | actual API total $${breakdown.actualCost.toFixed(4)}`
+  const actualCost = breakdown.actualCost === undefined ? "" : ` | OpenCode-recorded total $${formatUsd(breakdown.actualCost)}`
   const tokenParts = [
     `fresh ${formatNumber(breakdown.freshInputTokens)}`,
     `cache read ${formatNumber(breakdown.cacheReadTokens)}`,
@@ -67,7 +67,7 @@ export function formatDetailedSubagentBreakdownLines(
 
   return [
     `${indent}Tokens: ${tokenParts.join(" | ")}`,
-    `${indent}Estimated API-rate split: fresh $${breakdown.estimatedInputCost.toFixed(4)} | cache read $${breakdown.estimatedCacheReadCost.toFixed(4)} | cache write $${breakdown.estimatedCacheWriteCost.toFixed(4)} | ${outputLabel} $${breakdown.estimatedOutputCost.toFixed(4)} (estimated total $${estimatedTotalCost.toFixed(4)}${actualCost})`,
+    `${indent}Estimated API-rate split: fresh $${formatUsd(breakdown.estimatedInputCost)} | cache read $${formatUsd(breakdown.estimatedCacheReadCost)} | cache write $${formatUsd(breakdown.estimatedCacheWriteCost)} | ${outputLabel} $${formatUsd(breakdown.estimatedOutputCost)} (estimated total $${formatUsd(estimatedTotalCost)}${actualCost})`,
   ]
 }
 
@@ -76,32 +76,33 @@ function formatSingleModelCostLines(cost: CostEstimate): string[] {
   if (modelCost) return formatModelCostTokenLines(modelCost, "  ")
 
   return [
-    `  Input tokens:      ${formatNumber(cost.inputTokens).padStart(10)} × $${cost.pricePerMillionInput.toFixed(2)}/M  = $${cost.estimatedInputCost.toFixed(4)}`,
-    `  Output tokens:     ${formatNumber(cost.outputTokens + cost.reasoningTokens).padStart(10)} × $${cost.pricePerMillionOutput.toFixed(2)}/M  = $${cost.estimatedOutputCost.toFixed(4)}`,
+    `  Input tokens:      ${formatNumber(cost.inputTokens).padStart(10)} × $${formatRate(cost.pricePerMillionInput)}/M  = $${formatUsd(cost.estimatedInputCost)}`,
+    `  Output tokens:     ${formatNumber(cost.outputTokens + cost.reasoningTokens).padStart(10)} × $${formatRate(cost.pricePerMillionOutput)}/M  = $${formatUsd(cost.estimatedOutputCost)}`,
   ]
 }
 
 function formatModelCostTokenLines(modelCost: ModelCostEstimate, indent: string): string[] {
   const lines: string[] = []
-  if (modelCost.pricingTier === "context_over_200k") {
-    lines.push(`${indent}Pricing tier:      200K+ context rates`)
+  if (modelCost.pricingTier === "context_tier") {
+    const threshold = modelCost.pricingTierThreshold ?? 200_000
+    lines.push(`${indent}Pricing tier:      >${formatNumber(threshold)} context-token rates`)
   } else if (modelCost.pricingTier === "mixed_context_tiers") {
-    lines.push(`${indent}Pricing tier:      Mixed standard/200K+ context rates (effective blended rates shown)`)
+    lines.push(`${indent}Pricing tier:      Mixed context-rate tiers (effective blended rates shown)`)
   }
   lines.push(
-    `${indent}Input tokens:      ${formatNumber(modelCost.inputTokens).padStart(10)} × $${modelCost.pricePerMillionInput.toFixed(2)}/M  = $${modelCost.estimatedInputCost.toFixed(4)}`
+    `${indent}Input tokens:      ${formatNumber(modelCost.inputTokens).padStart(10)} × $${formatRate(modelCost.pricePerMillionInput)}/M  = $${formatUsd(modelCost.estimatedInputCost)}`
   )
   lines.push(
-    `${indent}Output tokens:     ${formatNumber(modelCost.outputTokens + modelCost.reasoningTokens).padStart(10)} × $${modelCost.pricePerMillionOutput.toFixed(2)}/M  = $${modelCost.estimatedOutputCost.toFixed(4)}`
+    `${indent}Output tokens:     ${formatNumber(modelCost.outputTokens + modelCost.reasoningTokens).padStart(10)} × $${formatRate(modelCost.pricePerMillionOutput)}/M  = $${formatUsd(modelCost.estimatedOutputCost)}`
   )
   if (modelCost.cacheReadTokens > 0) {
     lines.push(
-      `${indent}Cache read:        ${formatNumber(modelCost.cacheReadTokens).padStart(10)} × $${modelCost.pricePerMillionCacheRead.toFixed(2)}/M  = $${modelCost.estimatedCacheReadCost.toFixed(4)}`
+      `${indent}Cache read:        ${formatNumber(modelCost.cacheReadTokens).padStart(10)} × $${formatRate(modelCost.pricePerMillionCacheRead)}/M  = $${formatUsd(modelCost.estimatedCacheReadCost)}`
     )
   }
   if (modelCost.cacheWriteTokens > 0) {
     lines.push(
-      `${indent}Cache write:       ${formatNumber(modelCost.cacheWriteTokens).padStart(10)} × $${modelCost.pricePerMillionCacheWrite.toFixed(2)}/M  = $${modelCost.estimatedCacheWriteCost.toFixed(4)}`
+      `${indent}Cache write:       ${formatNumber(modelCost.cacheWriteTokens).padStart(10)} × $${formatRate(modelCost.pricePerMillionCacheWrite)}/M  = $${formatUsd(modelCost.estimatedCacheWriteCost)}`
     )
   }
 

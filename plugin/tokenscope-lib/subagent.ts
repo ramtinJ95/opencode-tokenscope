@@ -15,6 +15,10 @@ export class SubagentAnalyzer {
   ) {}
 
   async analyzeChildSessions(parentSessionID: string): Promise<SubagentAnalysis> {
+    return this.analyzeSessionTree(parentSessionID, new Set<string>())
+  }
+
+  private async analyzeSessionTree(parentSessionID: string, visited: Set<string>): Promise<SubagentAnalysis> {
     const result: SubagentAnalysis = {
       subagents: [],
       totalInputTokens: 0,
@@ -32,6 +36,15 @@ export class SubagentAnalyzer {
       estimatedCacheWriteCost: 0,
     }
 
+    if (visited.has(parentSessionID)) {
+      this.warnings?.add(
+        `Subagent traversal stopped at already visited session ${parentSessionID}.`,
+        `subagent-cycle:${parentSessionID}`
+      )
+      return result
+    }
+    visited.add(parentSessionID)
+
     try {
       const childrenResponse = await fetchSessionChildren(this.client, parentSessionID, this.routing)
       const children: ChildSession[] = unwrapResponseData<ChildSession[]>(childrenResponse ?? [])
@@ -39,6 +52,14 @@ export class SubagentAnalyzer {
       if (!Array.isArray(children) || children.length === 0) return result
 
       for (const child of children) {
+        if (visited.has(child.id)) {
+          this.warnings?.add(
+            `Subagent traversal skipped duplicate or cyclic child session ${child.id}.`,
+            `subagent-cycle:${child.id}`
+          )
+          continue
+        }
+
         const summary = await this.analyzeChildSession(child)
         if (summary) {
           result.subagents.push(summary)
@@ -57,7 +78,7 @@ export class SubagentAnalyzer {
           result.estimatedCacheWriteCost += summary.estimatedCacheWriteCost
         }
 
-        const nestedAnalysis = await this.analyzeChildSessions(child.id)
+        const nestedAnalysis = await this.analyzeSessionTree(child.id, visited)
         for (const nested of nestedAnalysis.subagents) {
           result.subagents.push(nested)
         }
@@ -92,7 +113,7 @@ export class SubagentAnalyzer {
 
       if (!Array.isArray(messages) || messages.length === 0) return null
 
-      const agentType = this.extractAgentType(child.title)
+      const agentType = child.agent?.trim() || this.extractAgentType(child.title)
       const telemetry = summarizeTelemetry(messages)
       let providerID = ""
       let modelName = "unknown"

@@ -16,6 +16,11 @@ type PriceableTokenUsage = Pick<
   "inputTokens" | "outputTokens" | "reasoningTokens" | "cacheReadTokens" | "cacheWriteTokens"
 >
 
+type SelectedPricingRate = {
+  rate: ModelPricing
+  threshold?: number
+}
+
 export class CostCalculator {
   constructor(private pricingData: Record<string, ModelPricing>) {}
 
@@ -30,7 +35,7 @@ export class CostCalculator {
         analysis.reasoningTokens > 0 ||
         analysis.cacheReadTokens > 0 ||
         analysis.cacheWriteTokens > 0)
-    const isSubscription = hasActivity && analysis.sessionCost === 0
+    const usesEstimatedCost = hasActivity && analysis.sessionCost === 0
 
     const estimatedInputCost = perModelCosts.reduce((sum, model) => sum + model.estimatedInputCost, 0)
     const estimatedOutputCost = perModelCosts.reduce((sum, model) => sum + model.estimatedOutputCost, 0)
@@ -39,7 +44,7 @@ export class CostCalculator {
     const estimatedSessionCost = perModelCosts.reduce((sum, model) => sum + model.estimatedSessionCost, 0)
 
     return {
-      isSubscription,
+      usesEstimatedCost,
       apiSessionCost: analysis.sessionCost,
       apiMostRecentCost: analysis.mostRecentCost,
       estimatedSessionCost,
@@ -89,9 +94,11 @@ export class CostCalculator {
 
     const segmentCosts = modelUsage.costSegments.map((segment) => this.calculateUsageCost(segment, pricing))
     const firstTier = segmentCosts[0]?.pricingTier
-    const pricingTier: PricingTier | undefined = segmentCosts.every((segment) => segment.pricingTier === firstTier)
-      ? firstTier
-      : "mixed_context_tiers"
+    const firstThreshold = segmentCosts[0]?.pricingTierThreshold
+    const hasOneTier = segmentCosts.every(
+      (segment) => segment.pricingTier === firstTier && segment.pricingTierThreshold === firstThreshold
+    )
+    const pricingTier: PricingTier | undefined = hasOneTier ? firstTier : "mixed_context_tiers"
     const summedCosts = this.sumCostBreakdowns(segmentCosts)
     const lastSegmentCost = segmentCosts[segmentCosts.length - 1]
     const mixedRate = (tokens: number, cost: number, fallback: number) =>
@@ -116,6 +123,7 @@ export class CostCalculator {
         lastSegmentCost?.pricePerMillionCacheWrite ?? pricing.cacheWrite
       ),
       pricingTier,
+      pricingTierThreshold: hasOneTier ? firstThreshold : undefined,
     }
   }
 
@@ -137,9 +145,10 @@ export class CostCalculator {
 
   private calculateUsageCostForRate(
     modelUsage: PriceableTokenUsage,
-    rate: ModelPricing,
+    selected: SelectedPricingRate,
     basePricing: ModelPricing
   ): TokenCostBreakdown {
+    const rate = selected.rate
     const estimatedInputCost = (modelUsage.inputTokens / 1_000_000) * rate.input
     const estimatedOutputCost = ((modelUsage.outputTokens + modelUsage.reasoningTokens) / 1_000_000) * rate.output
     const estimatedCacheReadCost = (modelUsage.cacheReadTokens / 1_000_000) * rate.cacheRead
@@ -156,7 +165,8 @@ export class CostCalculator {
       pricePerMillionOutput: rate.output,
       pricePerMillionCacheRead: rate.cacheRead,
       pricePerMillionCacheWrite: rate.cacheWrite,
-      pricingTier: rate === basePricing.contextOver200k ? "context_over_200k" : undefined,
+      pricingTier: selected.threshold === undefined ? undefined : "context_tier",
+      pricingTierThreshold: selected.threshold,
     }
   }
 
@@ -169,14 +179,23 @@ export class CostCalculator {
       cacheReadTokens: 0,
       cacheWriteTokens: 0,
     }
-    const rate = this.selectPricingRate(uncachedUsage, pricing)
+    const rate = this.selectPricingRate(uncachedUsage, pricing).rate
     return (inputIfUncached / 1_000_000) * rate.input
   }
 
-  private selectPricingRate(modelUsage: PriceableTokenUsage, pricing: ModelPricing): ModelPricing {
+  private selectPricingRate(modelUsage: PriceableTokenUsage, pricing: ModelPricing): SelectedPricingRate {
     const contextTokens = modelUsage.inputTokens + modelUsage.cacheReadTokens + modelUsage.cacheWriteTokens
-    if (pricing.contextOver200k && contextTokens > (pricing.contextOver200k.threshold ?? 200_000)) return pricing.contextOver200k
-    return pricing
+    const tier = pricing.tiers
+      ?.filter((item) => contextTokens > item.threshold)
+      .sort((a, b) => b.threshold - a.threshold)[0]
+    if (tier) return { rate: tier, threshold: tier.threshold }
+
+    const fallbackThreshold = pricing.contextOver200k?.threshold ?? 200_000
+    if (pricing.contextOver200k && contextTokens > fallbackThreshold) {
+      return { rate: pricing.contextOver200k, threshold: fallbackThreshold }
+    }
+
+    return { rate: pricing }
   }
 
   resolvePricingModelName(modelUsage: ModelTokenUsage, fallbackPricingModelName: string): string {
@@ -248,7 +267,10 @@ export class CostCalculator {
     let bestPricing: ModelPricing | undefined
 
     for (const [key, pricing] of Object.entries(this.pricingData)) {
-      if (modelName.startsWith(key.toLowerCase()) && key.length > bestMatchLength) {
+      const normalizedKey = key.toLowerCase()
+      const suffix = modelName.slice(normalizedKey.length)
+      const isVersionedPrefix = modelName.startsWith(normalizedKey) && /^[-.:/@_]/.test(suffix)
+      if (isVersionedPrefix && key.length > bestMatchLength) {
         bestMatchLength = key.length
         bestPricing = pricing
       }

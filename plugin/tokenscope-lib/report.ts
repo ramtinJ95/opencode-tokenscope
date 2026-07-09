@@ -1,19 +1,55 @@
 import fs from "fs/promises"
+import { randomUUID } from "node:crypto"
+import os from "node:os"
+import path from "node:path"
 
 import type { TokenAnalysis } from "./types.js"
 import { formatErrorMessage } from "./warnings.js"
 
-export const REPORT_FILENAME = "token-usage-output.txt"
+function safeFilenamePart(value: string | undefined, fallback: string): string {
+  const normalized = value?.trim().replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_+|_+$/g, "")
+  return normalized?.slice(0, 100) || fallback
+}
+
+export function buildReportFilename(sessionID?: string, invocationID?: string, nonce = randomUUID()): string {
+  const session = safeFilenamePart(sessionID, "unknown-session")
+  const invocation = safeFilenamePart(invocationID, "unknown-invocation")
+  const unique = safeFilenamePart(nonce, "unknown-run")
+  return `token-usage-output-${session}-${invocation}-${unique}.txt`
+}
+
+export async function createReportPath(
+  sessionID?: string,
+  invocationID?: string,
+  nonce = randomUUID()
+): Promise<string> {
+  const openCodeTemp = path.join(os.tmpdir(), "opencode")
+  await fs.mkdir(openCodeTemp, { recursive: true, mode: 0o700 })
+  const rootStat = await fs.lstat(openCodeTemp)
+  if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) {
+    throw new Error(`OpenCode temporary path is not a real directory: ${openCodeTemp}`)
+  }
+  if (process.platform !== "win32") {
+    if (typeof process.getuid === "function" && rootStat.uid !== process.getuid()) {
+      throw new Error(`OpenCode temporary path is not owned by the current user: ${openCodeTemp}`)
+    }
+    if ((rootStat.mode & 0o022) !== 0) {
+      throw new Error(`OpenCode temporary path is writable by another user: ${openCodeTemp}`)
+    }
+  }
+
+  const directory = await fs.mkdtemp(path.join(openCodeTemp, "tokenscope-"))
+  return path.join(directory, buildReportFilename(sessionID, invocationID, nonce))
+}
 
 export async function writeReport(outputPath: string, output: string): Promise<string | null> {
+  const tempPath = `${outputPath}.${randomUUID()}.tmp`
   try {
-    try {
-      await fs.unlink(outputPath)
-    } catch {}
-
-    await fs.writeFile(outputPath, output, { encoding: "utf8", flag: "w" })
+    await fs.writeFile(tempPath, output, { encoding: "utf8", flag: "wx", mode: 0o600 })
+    await fs.rename(tempPath, outputPath)
     return null
   } catch (error) {
+    await fs.rm(tempPath, { force: true }).catch(() => {})
     return `Failed to write token analysis to ${outputPath}: ${formatErrorMessage(error)}`
   }
 }
@@ -66,8 +102,9 @@ export function buildSuccessSummary(outputPath: string, analysis: TokenAnalysis)
   let summaryMsg =
     `Token analysis complete! Full report saved to: ${outputPath}` +
     `\n\nTimestamp: ${timestamp}` +
-    `\nLocal estimated content tokens: ${formattedLocalEstimated}` +
-    `\nSession telemetry total: ${formattedMainTelemetry}`
+    `\nRetained local content estimate: ${formattedLocalEstimated}` +
+    `\nRecorded telemetry total: ${formattedMainTelemetry}` +
+    `\nSnapshot boundary: completed provider steps before this TokenScope tool invocation finishes`
 
   if (analysis.subagentAnalysis && analysis.subagentAnalysis.subagents.length > 0) {
     const subagentTokens = new Intl.NumberFormat("en-US").format(analysis.subagentAnalysis.totalTokens)

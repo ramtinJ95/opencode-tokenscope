@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 
-import { fetchProviderList, fetchSessionChildren, fetchSessionMessages, fetchToolList } from "../tokenscope-lib/opencode.js"
+import { fetchProviderList, fetchSession, fetchSessionChildren, fetchSessionMessages, fetchToolList } from "../tokenscope-lib/opencode.js"
 
 test("fetchSessionMessages falls back to the current SDK parameter shape", async () => {
   const calls: unknown[] = []
@@ -38,6 +38,28 @@ test("fetchSessionMessages omits empty routing parameters", async () => {
   await fetchSessionMessages(client, "ses_current")
 
   expect(calls[0]).toEqual({ path: { id: "ses_current" }, throwOnError: true })
+})
+
+test("fetchSession supports the current SDK parameter shape with routing", async () => {
+  const calls: unknown[] = []
+  const client = {
+    session: {
+      async get(input: unknown, options?: unknown) {
+        calls.push(options === undefined ? input : [input, options])
+        if ((input as any)?.sessionID === "ses_current") return { id: "ses_current", tokens: {} }
+        throw new Error("bad shape")
+      },
+    },
+  }
+
+  const session = await fetchSession(client, "ses_current", { directory: "/tmp/project" })
+
+  expect(session).toEqual({ id: "ses_current", tokens: {} })
+  expect(calls).toEqual([
+    { path: { id: "ses_current" }, query: { directory: "/tmp/project" }, throwOnError: true },
+    { path: { sessionID: "ses_current" }, query: { directory: "/tmp/project" }, throwOnError: true },
+    [{ sessionID: "ses_current", directory: "/tmp/project" }, { throwOnError: true }],
+  ])
 })
 
 test("fetchSessionMessages continues past non-throwing error responses", async () => {

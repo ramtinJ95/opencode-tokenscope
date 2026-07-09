@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 
-import { ModelResolver } from "../tokenscope-lib/analyzer.js"
+import { ContentCollector, ModelResolver, TokenAnalysisEngine } from "../tokenscope-lib/analyzer.js"
 import { CostCalculator } from "../tokenscope-lib/cost.js"
 import { calculateModelAwareCacheEfficiency } from "../tokenscope-lib/formatter-helpers.js"
 import { formatCacheEfficiency } from "../tokenscope-lib/formatter-insight-sections.js"
@@ -95,6 +95,22 @@ test("summarizeTelemetry reads top-level scalar provider and model IDs", () => {
   expect(telemetry.perModelUsage[0]?.modelID).toBe("gpt-5.4-mini")
 })
 
+test("summarizeTelemetry clamps invalid negative usage and cost to zero", () => {
+  const telemetry = summarizeTelemetry([
+    {
+      role: "assistant",
+      tokens: { input: -10, output: -20, reasoning: -1, cache: { read: -30, write: -40 }, total: -100 },
+      cost: -5,
+    },
+  ])
+
+  expect(telemetry.inputTokens).toBe(0)
+  expect(telemetry.outputTokens).toBe(0)
+  expect(telemetry.cacheReadTokens).toBe(0)
+  expect(telemetry.sessionCost).toBe(0)
+  expect(telemetry.mostRecentProviderTotalTokens).toBe(0)
+})
+
 test("summarizeTelemetry prefers per-call data model over stale info model", () => {
   const telemetry = summarizeTelemetry([
     {
@@ -137,6 +153,99 @@ test("ModelResolver prefers data model fields over stale info model fields", () 
   expect(resolved.providerID).toBe("openai")
   expect(resolved.modelID).toBe("gpt-5.4-mini")
   expect(resolved.model.name).toBe("gpt-5.4-mini")
+})
+
+test("ModelResolver uses model families instead of treating every OpenCode model as OpenAI", () => {
+  const resolver = new ModelResolver()
+  const claude = resolver.resolveModelAndProvider([
+    {
+      info: { id: "msg_claude", role: "assistant", providerID: "opencode", modelID: "claude-opus-4-6" },
+      parts: [],
+    },
+  ])
+  const gpt = resolver.resolveModelAndProvider([
+    {
+      info: { id: "msg_gpt", role: "assistant", providerID: "opencode", modelID: "gpt-5.4-mini" },
+      parts: [],
+    },
+  ])
+
+  expect(claude.model.spec).toEqual({ kind: "huggingface", hub: "Xenova/claude-tokenizer" })
+  expect(gpt.model.spec).toEqual({ kind: "tiktoken", model: "gpt-4o" })
+})
+
+test("ModelResolver retains the actual model name when tokenization is approximate", () => {
+  const resolver = new ModelResolver()
+  const resolved = resolver.resolveModelAndProvider([
+    {
+      info: { id: "msg_gemini", role: "assistant", providerID: "opencode", modelID: "gemini-3.1-pro" },
+      parts: [],
+    },
+  ])
+
+  expect(resolved.model).toEqual({ name: "gemini-3.1-pro", spec: { kind: "approx" } })
+})
+
+test("ContentCollector excludes ignored text and includes replayed tool errors", () => {
+  const collector = new ContentCollector()
+  const messages = [
+    {
+      info: { id: "msg_user", role: "user" },
+      parts: [
+        { type: "text" as const, text: "visible" },
+        { type: "text" as const, text: "hidden", ignored: true },
+      ],
+    },
+    {
+      info: { id: "msg_assistant", role: "assistant" },
+      parts: [
+        { type: "tool" as const, tool: "read", state: { status: "error" as const, error: "permission denied" } },
+        {
+          type: "tool" as const,
+          tool: "bash",
+          state: {
+            status: "error" as const,
+            error: "interrupted",
+            metadata: { interrupted: true, output: "partial output" },
+          },
+        },
+      ],
+    },
+  ]
+
+  expect(collector.collectMessageTexts(messages, "user")).toEqual([{ label: "User#1", content: "visible" }])
+  expect(collector.collectToolOutputs(messages)).toEqual([
+    { label: "read", content: "permission denied" },
+    { label: "bash", content: "partial output" },
+  ])
+})
+
+test("TokenAnalysisEngine does not relabel prompt remainder as system content", async () => {
+  const engine = new TokenAnalysisEngine(
+    { async countTokens(content: string) { return content.length } } as any,
+    new ContentCollector()
+  )
+  const analysis = await engine.analyze(
+    "ses_test",
+    [
+      { info: { id: "msg_user", role: "user" }, parts: [{ type: "text", text: "hello" }] },
+      {
+        info: { id: "msg_assistant", role: "assistant", providerID: "openai", modelID: "gpt-5.4" },
+        parts: [
+          { type: "text", text: "prior assistant history" },
+          {
+            type: "step-finish",
+            tokens: { input: 1_200, output: 10, reasoning: 0, cache: { read: 0, write: 0 } },
+            cost: 0,
+          },
+        ],
+      },
+    ],
+    { name: "gpt-5.4", spec: { kind: "approx" } },
+    3
+  )
+
+  expect(analysis.categories.system.totalTokens).toBe(0)
 })
 
 test("calculateCost applies per-model prices to input output and cache token types", () => {
@@ -235,7 +344,8 @@ test("calculateCost applies over 200k context pricing when available", () => {
   expect(cost.estimatedSessionCost).toBeCloseTo(0.0444)
   expect(cost.perModelCosts[0]?.pricePerMillionInput).toBe(2)
   expect(cost.perModelCosts[0]?.pricePerMillionCacheRead).toBe(0.2)
-  expect(cost.perModelCosts[0]?.pricingTier).toBe("context_over_200k")
+  expect(cost.perModelCosts[0]?.pricingTier).toBe("context_tier")
+  expect(cost.perModelCosts[0]?.pricingTierThreshold).toBe(200_000)
 })
 
 test("calculateCost applies over 200k pricing per API call instead of aggregated totals", () => {
@@ -348,7 +458,80 @@ test("calculateCost uses custom context tier thresholds from live metadata", () 
   expect(belowThreshold.estimatedSessionCost).toBeCloseTo(0.25)
   expect(belowThreshold.perModelCosts[0]?.pricingTier).toBeUndefined()
   expect(aboveThreshold.estimatedSessionCost).toBeCloseTo(1.35)
-  expect(aboveThreshold.perModelCosts[0]?.pricingTier).toBe("context_over_200k")
+  expect(aboveThreshold.perModelCosts[0]?.pricingTier).toBe("context_tier")
+  expect(aboveThreshold.perModelCosts[0]?.pricingTierThreshold).toBe(400_000)
+})
+
+test("calculateCost selects the largest matching context tier before the legacy 200K fallback", () => {
+  const calculator = new CostCalculator({
+    "provider/model": {
+      input: 1,
+      output: 2,
+      cacheRead: 0.1,
+      cacheWrite: 1,
+      tiers: [
+        { input: 3, output: 4, cacheRead: 0.3, cacheWrite: 0, threshold: 32_000 },
+        { input: 5, output: 6, cacheRead: 0.5, cacheWrite: 0, threshold: 128_000 },
+      ],
+      contextOver200k: { input: 100, output: 100, cacheRead: 100, cacheWrite: 100 },
+    },
+  })
+
+  const usage = {
+    providerID: "provider",
+    modelID: "model",
+    modelName: "provider/model",
+    inputTokens: 150_000,
+    outputTokens: 1_000,
+    reasoningTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    apiCost: 0,
+    apiCallCount: 1,
+    callsWithCacheRead: 0,
+    callsWithCacheWrite: 0,
+  }
+  const cost = calculator.calculateCost(
+    baseAnalysis({
+      pricingModelName: "provider/model",
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      apiCallCount: 1,
+      perModelUsage: [usage],
+    })
+  )
+
+  expect(cost.estimatedSessionCost).toBeCloseTo(0.756)
+  expect(cost.perModelCosts[0]?.pricePerMillionInput).toBe(5)
+  expect(cost.perModelCosts[0]?.pricingTierThreshold).toBe(128_000)
+})
+
+test("calculateCost does not apply a context tier at its exact threshold", () => {
+  const calculator = new CostCalculator({
+    "provider/model": {
+      input: 1,
+      output: 2,
+      cacheRead: 0.1,
+      cacheWrite: 1,
+      tiers: [{ input: 5, output: 6, cacheRead: 0.5, cacheWrite: 0, threshold: 128_000 }],
+    },
+  })
+  const cost = calculator.calculateUsageCost(
+    { inputTokens: 128_000, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+    calculator.getPricing("provider/model")
+  )
+
+  expect(cost.estimatedSessionCost).toBeCloseTo(0.128)
+  expect(cost.pricingTier).toBeUndefined()
+})
+
+test("pricing prefix matching requires a model-version boundary", () => {
+  const calculator = new CostCalculator({
+    "openai/gpt-5.1": { input: 1, output: 2, cacheRead: 0.1, cacheWrite: 0 },
+  })
+
+  expect(calculator.hasPricing("openai/gpt-5.1-2025-01-01")).toBe(true)
+  expect(calculator.hasPricing("openai/gpt-5.10")).toBe(false)
 })
 
 test("calculateCost reports effective blended rates for mixed context tiers", () => {
@@ -478,7 +661,7 @@ test("cache efficiency uses per-call uncached context tiers for cached tokens", 
     "claude-sonnet-4-20250514"
   )
 
-  expect(lines.join("\n")).toContain("350,000 tokens x $1.71/M")
+  expect(lines.join("\n")).toContain("350,000 tokens x $1.71428571/M")
 })
 
 test("calculateCost uses the analysis pricing model when telemetry model metadata is missing", () => {
@@ -548,4 +731,3 @@ test("calculateCost falls back when telemetry only has provider metadata", () =>
   expect(cost.estimatedSessionCost).toBeCloseTo(0.0012)
   expect(cost.unknownPricingModels).toEqual([])
 })
-

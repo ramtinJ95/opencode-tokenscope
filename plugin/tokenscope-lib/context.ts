@@ -193,9 +193,9 @@ export class ContextAnalyzer {
   /**
    * Analyze context breakdown from cache_write tokens.
    *
-   * Note: OpenCode's `opencode export` command doesn't include system prompt content
-   * in the output, so we estimate the breakdown from the first cache_write token count
-   * which represents the total cached context size.
+   * Note: OpenCode's `opencode export` command doesn't include generated system
+   * prompt content. The first cache_write bucket is therefore used only as an
+   * observed allocation budget, not as a complete context-window measurement.
    *
    * If system prompts become available in future versions, we can enhance this
    * to tokenize the actual content for more accurate breakdowns.
@@ -416,21 +416,19 @@ export class ContextAnalyzer {
   /**
    * Estimate context breakdown from cache token counts when system prompts aren't available.
    *
-   * Based on typical OpenCode system prompt structure:
-   * - Base System Prompt: ~1,500-2,000 tokens
+   * Based on the current OpenCode system prompt structure:
    * - Tool Definitions: ~350 tokens per tool (typically 12-15 tools = ~4,500-5,500)
    * - Environment Context: ~100-200 tokens
-   * - Project Tree: ~300-800 tokens (varies by project)
-   * - Custom Instructions: ~100-500 tokens
    *
-   * We use the first cache_write value as an estimate of total cached context.
+   * We use the first cache_write value as an observed allocation budget. It is
+   * not a complete measurement of the active context window.
    */
   private estimateContextFromCacheTokens(
     exported: ExportedSession,
     breakdown: ContextBreakdown,
     toolDefinitions: ToolListItem[]
   ): ContextBreakdown {
-    // Find the first API call that wrote to cache to estimate total cached context size
+    // Use the first cache-write bucket as the upper bound for this allocation.
     const totalCachedTokens = firstCacheWriteTokens(exported.messages)
     let enabledToolCount = 0
 
@@ -446,22 +444,27 @@ export class ContextAnalyzer {
     // Prefer current OpenCode /experimental/tool metadata when available; fall
     // back to a coarse per-tool estimate when only transcript data is present.
     const estimatedToolTokens = measuredToolTokens || enabledToolCount * 350
-    breakdown.toolDefinitions.tokens = estimatedToolTokens
     breakdown.toolDefinitions.toolCount = enabledToolCount
     breakdown.toolDefinitions.identified = false // Mark as estimated
 
     // Estimate environment context (~150 tokens)
-    breakdown.environmentContext.tokens = 150
     breakdown.environmentContext.components = ["working-dir", "platform", "git-status", "date"]
     breakdown.environmentContext.identified = false
 
-    // Estimate project tree (~500 tokens average)
-    breakdown.projectTree.tokens = 500
+    // Current OpenCode does not inject a project tree into the system prompt.
+    // Allocate each estimated component from a fixed budget so the displayed
+    // parts can never add up to more than the observed cache-write count.
+    let remainingTokens = totalCachedTokens
+    breakdown.toolDefinitions.tokens = Math.min(estimatedToolTokens, remainingTokens)
+    remainingTokens -= breakdown.toolDefinitions.tokens
+    breakdown.environmentContext.tokens = Math.min(150, remainingTokens)
+    remainingTokens -= breakdown.environmentContext.tokens
+    breakdown.projectTree.tokens = 0
     breakdown.projectTree.identified = false
 
-    // Remaining tokens go to base system prompt
-    const remainingTokens = totalCachedTokens - estimatedToolTokens - 150 - 500
-    breakdown.baseSystemPrompt.tokens = Math.max(0, remainingTokens)
+    // The remainder includes the base prompt, custom instructions, skill/MCP
+    // catalogs, and provider framing. It cannot be split from usage telemetry.
+    breakdown.baseSystemPrompt.tokens = remainingTokens
     breakdown.baseSystemPrompt.identified = false
 
     breakdown.totalCachedContext = totalCachedTokens

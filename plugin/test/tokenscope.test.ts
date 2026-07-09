@@ -5,8 +5,6 @@ import path from "node:path"
 
 import { TokenAnalyzerPlugin } from "../tokenscope.ts"
 
-const REPORT_FILENAME = "token-usage-output.txt"
-
 type RunOptions = {
   argSessionID?: string
   contextSessionID?: string
@@ -59,7 +57,12 @@ async function runTokenscope(options: RunOptions = {}) {
       }
     )
 
-    const report = await fs.readFile(path.join(directory, REPORT_FILENAME), "utf8")
+    const reportPath = summary.match(/saved to: (.+)/)?.[1]
+    expect(reportPath).toBeDefined()
+    expect(path.dirname(reportPath!).startsWith(path.join(os.tmpdir(), "opencode", "tokenscope-"))).toBe(true)
+    expect((await fs.readdir(directory)).filter((filename) => filename.startsWith("token-usage-output-"))).toHaveLength(0)
+    const report = await fs.readFile(reportPath!, "utf8")
+    await fs.rm(path.dirname(reportPath!), { recursive: true, force: true })
     return { calls, summary, report }
   })
 }

@@ -148,26 +148,14 @@ echo_info "All files downloaded successfully"
 # Install dependencies and build the plugin
 echo_step "4/5 Installing dependencies and building plugin..."
 
-DEPS_EXIST=false
-if [ -d "$OPENCODE_DIR/plugin/node_modules/js-tiktoken" ] && \
-   [ -d "$OPENCODE_DIR/plugin/node_modules/@huggingface/tokenizers" ] && \
-   [ -d "$OPENCODE_DIR/plugin/node_modules/@opencode-ai/plugin" ] && \
-   [ -d "$OPENCODE_DIR/plugin/node_modules/typescript" ]; then
-    DEPS_EXIST=true
-fi
-
-if [ "$UPDATE_MODE" = true ] && [ "$DEPS_EXIST" = true ]; then
-    echo_info "Update mode: Dependencies already installed, skipping..."
+echo_info "Installing dependencies from package.json..."
+cd "$OPENCODE_DIR/plugin"
+if npm install --prefix "$OPENCODE_DIR/plugin"; then
+    echo_info "Dependencies installed successfully"
 else
-    echo_info "Installing dependencies from package.json..."
-    cd "$OPENCODE_DIR/plugin"
-    if npm install --prefix "$OPENCODE_DIR/plugin"; then
-        echo_info "Dependencies installed successfully"
-    else
-        echo_error "Failed to install dependencies"
-        echo_error "You can try running manually: cd ~/.config/opencode/plugin && npm install"
-        exit 1
-    fi
+    echo_error "Failed to install dependencies"
+    echo_error "You can try running manually: cd ~/.config/opencode/plugin && npm install"
+    exit 1
 fi
 
 echo_info "Building plugin dist files..."
@@ -252,7 +240,7 @@ echo ""
 echo_step "Next steps:"
 echo "  1. Restart OpenCode"
 echo "  2. Type /tokenscope in any session"
-echo "  3. View full report: cat token-usage-output.txt"
+echo "  3. View the full report at the unique path returned by TokenScope"
 echo ""
 echo_info "For help and documentation, visit:"
 echo_info "$REPO_URL"

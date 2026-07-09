@@ -16,6 +16,22 @@ export function formatNumber(value: number): string {
   return new Intl.NumberFormat("en-US").format(value)
 }
 
+function formatDecimal(value: number, minimumFractionDigits: number, maximumFractionDigits: number): string {
+  const normalized = Math.abs(value) < 0.5 * 10 ** -maximumFractionDigits ? 0 : value
+  const fixed = normalized.toFixed(maximumFractionDigits)
+  const [integer, fraction = ""] = fixed.split(".")
+  const trimmed = fraction.replace(/0+$/, "")
+  return `${integer}.${trimmed.padEnd(minimumFractionDigits, "0")}`
+}
+
+export function formatUsd(value: number): string {
+  return formatDecimal(value, 4, 8)
+}
+
+export function formatRate(value: number): string {
+  return formatDecimal(value, 2, 8)
+}
+
 export function formatCategoryBar(
   label: string,
   tokens: number,

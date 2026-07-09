@@ -76,7 +76,7 @@ type TelemetryMessageLike = {
 }
 
 function safeNumber(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : 0
+  return typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : 0
 }
 
 function hasExplicitNumber(value: unknown): value is number {

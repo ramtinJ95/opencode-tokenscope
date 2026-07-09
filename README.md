@@ -4,7 +4,7 @@
 
 > Comprehensive token usage analysis and cost tracking for OpenCode AI sessions
 
-Track and optimize your token usage across system prompts, user messages, tool outputs, and more. Get detailed breakdowns, accurate cost estimates, and visual insights for your AI development workflow.
+Track recoverable OpenCode usage, cache activity, model costs, and retained message content. Recorded telemetry is kept separate from explanatory estimates so the report does not imply precision the source data cannot support.
 
 ## Installation
 
@@ -34,7 +34,7 @@ description: Analyze token usage across the current session with detailed breakd
 
 Call the tokenscope tool directly without delegating to other agents.
 Leave sessionID unset unless the user explicitly asked to analyze a different session.
-Then cat the token-usage-output.txt. DONT DO ANYTHING ELSE WITH THE OUTPUT.
+Then read the exact unique report path returned by TokenScope. Return that file verbatim and do nothing else with it.
 EOF
 ```
 
@@ -57,7 +57,7 @@ Then restart OpenCode and run `/tokenscope`
 
 ## Compatibility
 
-TokenScope supports the OpenCode plugin client from `@opencode-ai/plugin >=1.1.48`. Newer OpenCode provider metadata is used when available; otherwise TokenScope falls back to its bundled pricing catalog.
+TokenScope supports the OpenCode plugin client from `@opencode-ai/plugin >=1.1.48`. The accuracy contracts in this release were verified against OpenCode v1.17.18; older runtimes can differ in explanatory skill/tool formatting even when core telemetry remains available. Live OpenCode provider metadata is used when available; otherwise TokenScope falls back to its bundled pricing catalog with a visible warning.
 
 ## Updating
 
@@ -88,7 +88,7 @@ bash ~/.config/opencode/plugin/install.sh --update
 curl -sSL https://raw.githubusercontent.com/ramtinJ95/opencode-tokenscope/main/plugin/install.sh | bash -s -- --update
 ```
 
-The `--update` flag skips dependency installation for faster updates.
+The `--update` flag refreshes dependencies from the downloaded `package.json` before rebuilding.
 
 ## Usage
 
@@ -99,10 +99,10 @@ Simply type in OpenCode:
 
 The plugin will:
 1. Analyze the current session
-2. Count tokens across all categories
+2. Tokenize retained text content into explanatory categories
 3. Analyze all subagent (Task tool) child sessions recursively
-4. Calculate costs based on API telemetry
-5. Save detailed report to `token-usage-output.txt`
+4. Report OpenCode-recorded costs and separate public API-rate estimates
+5. Save a unique, atomically written report under the OS temporary directory and return its exact path
 
 ### Options
 
@@ -112,58 +112,66 @@ The plugin will:
 
 ### Reading the Full Report
 
-```bash
-cat token-usage-output.txt
-```
+Use the exact path returned by the tool. Reports live in a private per-invocation directory under OpenCode's OS temporary directory rather than the analyzed worktree. Filenames include the analyzed session, invocation, and a unique nonce so concurrent sessions cannot overwrite each other; the OS owns eventual cleanup.
+
+### Accuracy Boundary
+
+- Recorded usage comes from persisted OpenCode `step-finish` parts. These are the strongest available source for fresh input, cache read/write, visible output, reasoning, completed provider-step count, and OpenCode-recorded cost.
+- The provider step that invoked TokenScope is not included: OpenCode persists its `step-finish` only after the tool returns. Later report-reading/final-response steps are outside the same snapshot.
+- OpenCode normally calculates recorded cost from normalized usage and model metadata; it is not necessarily a provider invoice. Public API-rate cost is shown separately when the recorded cost is zero.
+- Local content categories are tokenizer estimates over retained text and replayable tool output. They exclude generated system prompts, provider framing, tool-call arguments, and media; they are not billable usage or an exact post-compaction active-context reconstruction.
+- Compaction and active reverts can make retained transcript differ from the next provider request; deleted/reverted-away history cannot be reconstructed as lifetime spend from the session API.
+- Context components, tool schemas, and skill/subagent catalogs are visibly marked estimates. TokenScope does not infer a precise system-prompt total from aggregate usage.
 
 ## Features
 
 ### Comprehensive Token Analysis
-- **5 Category Breakdown**: System prompts, user messages, assistant responses, tool outputs, and reasoning traces
+- **5 Category Breakdown**: Exposed system overrides, user messages, assistant responses, tool outputs, and reasoning traces
 - **Visual Charts**: Easy-to-read ASCII bar charts with percentages and token counts
-- **Smart Inference**: Automatically infers system prompts from API telemetry (since they're not exposed in session messages)
+- **Explicit Uncertainty**: Keeps generated system content out of local totals when OpenCode does not expose it
 
 ### Context Breakdown Analysis
-- **System Prompt Components**: See token distribution across base prompt, tool definitions, environment context, project tree, and custom instructions
-- **Automatic Estimation**: Estimates breakdown from `cache_write` tokens when system prompt content isn't directly available
-- **Tool Count**: Shows how many tools are loaded and their combined token cost
+- **Observed Cache Anchor**: Uses the first recorded `cache_write` only as a bounded reference point
+- **Heuristic Attribution**: Separates estimated tool definitions and environment context from unattributed cached prompt content
+- **Conservative Totals**: Estimated components never exceed the observed cache-write count and no nonexistent project tree is invented
 
 ### Tool Definition Cost Estimates
-- **Per-Tool Estimates**: Lists all enabled tools with estimated schema token costs
+- **Per-Tool Estimates**: Tokenizes raw/default-agent OpenCode tool metadata when available
 - **Argument Analysis**: Infers argument count and complexity from actual tool calls in the session
 - **Complexity Detection**: Distinguishes between simple arguments and complex ones (arrays/objects)
 
 ### Cache Efficiency Metrics
 - **Cache Hit Rate**: Visual display of cache read vs fresh input token distribution
-- **Cost Savings**: Calculates actual savings from prompt caching
-- **Effective Rate**: Shows what you're actually paying per token vs standard rates
+- **Cost Savings**: Estimates API-rate savings from prompt caching
+- **Effective Rate**: Estimates the blended input rate from recorded usage and model metadata
 
 ### Accurate Cost Tracking
-- **Models.dev Pricing Database**: Pricing data synced from models.dev across thousands of provider/model entries
+- **Live OpenCode Pricing Metadata**: Uses the running OpenCode instance's provider/model prices first, with a bundled models.dev-derived fallback
 - **Cache-Aware Pricing**: Properly handles cache read/write tokens with discounted rates
-- **Per-Call Step Telemetry**: Reads stored `step-finish` records so multi-step assistant turns and tool loops count every API call, not just the final step saved on the assistant message
-- **Session-Wide Billing**: Aggregates costs across all API calls in your session
+- **Per-Call Step Telemetry**: Reads stored `step-finish` records so multi-step assistant turns and tool loops count every completed provider step, not just the final step saved on the assistant message
+- **OpenCode-Compatible Tiers**: Applies arbitrary and multiple context-price thresholds per call before the legacy 200K fallback
+- **Recoverable Usage Snapshot**: Aggregates persisted steps before the TokenScope invocation completes
 
 ### Subagent Cost Tracking
 - **Child Session Analysis**: Recursively analyzes all subagent sessions spawned by the Task tool
-- **Aggregated Totals**: Shows combined tokens, costs, and API calls across main session and all subagents
-- **Per-Agent Breakdown**: Lists each subagent with its type, token usage, cost, and API call count
+- **Aggregated Totals**: Shows combined tokens, costs, and completed provider steps across the main session and all subagents
+- **Per-Agent Breakdown**: Lists each subagent with its type, token usage, cost, and completed provider-step count
 - **Detailed Cost Buckets**: Optional config flag expands each subagent with fresh input, cache read, cache write, output, and reasoning token buckets plus estimated per-bucket costs
 - **Optional Toggle**: Enable/disable subagent analysis with the `includeSubagents` parameter
 
 ### Advanced Features
 - **Tool Usage Stats**: Track which tools consume the most tokens and how many times each is called
-- **API Call Tracking**: See total API calls for main session and subagents
+- **Provider-Step Tracking**: See completed provider-step totals for the main session and subagents
 - **Top Contributors**: Identify the biggest token consumers
 - **Model Normalization**: Handles `provider/model` format automatically
-- **Multi-Tokenizer Support**: Uses official tokenizers (tiktoken for OpenAI, lightweight Hugging Face tokenizers for others)
+- **Multi-Tokenizer Support**: Uses tiktoken for OpenAI-family models and public Hugging Face tokenizer implementations where available, with visible approximate fallbacks
 - **Configurable Sections**: Enable/disable analysis features via `tokenscope-config.json`
 
 ### Skill Analysis
-- **Available Skills**: Shows the always-available skill catalog token cost (including the verbose system-prompt catalog OpenCode injects on every API call)
+- **Available Skills**: Shows the available skill catalog token cost, including the verbose system-prompt catalog OpenCode injects into provider requests when skills are available
 - **Available Subagents**: Shows all subagents listed in the Task tool definition with their token cost
 - **Loaded Skills**: Tracks skills loaded during the session with call counts
-- **Cumulative Token Tracking**: Accurately counts token cost when skills are called multiple times
+- **Cumulative Result Tracking**: Tokenizes and sums every persisted skill result, even when repeated calls return different content sizes
 
 ## Understanding OpenCode Skill Behavior
 
@@ -173,18 +181,18 @@ This section explains how OpenCode handles skills and why the token counting wor
 
 Skills are on-demand instructions that agents can load via the `skill` tool. They have multiple token consumption points:
 
-1. **Always-Available Skill Catalog**: Current OpenCode versions inject a verbose XML skill catalog into the system prompt on **every API call**.
+1. **Available Skill Catalog**: Current OpenCode versions inject a verbose XML skill catalog into each provider request when skills are available to the active agent.
 
-2. **Skill Tool Description**: The `skill` tool also includes a compact markdown list of available skills in its tool description, which also consumes tokens on every API call.
+2. **Skill Tool Description**: The `skill` tool has a static description. TokenScope reports that description here; the schema is covered separately by tool-definition estimates.
 
 3. **Loaded Skill Content**: When an agent calls `skill({ name: "my-skill" })`, the full SKILL.md content is loaded and returned as a tool result.
 
-### Why Multiple Skill Calls Multiply Token Cost
+### Why Multiple Skill Calls Add Retained Content
 
 **Important**: OpenCode does **not** deduplicate skill content. Each time the same skill is called, the full content is added to context again as a new tool result.
 
-This means if you call `skill({ name: "git-release" })` 3 times and it contains 500 tokens:
-- Total context cost = 500 × 3 = **1,500 tokens**
+This means if you call `skill({ name: "git-release" })` 3 times and each result contains 500 tokens:
+- Retained skill-result content = 500 × 3 = **1,500 tokens**, before accounting for how later provider calls replay or cache that content
 
 This behavior is by design in OpenCode. You can verify this in the source code:
 
@@ -210,166 +218,19 @@ This means loaded skill content stays in context for the duration of the session
 - **Monitor skill token usage**: Use TokenScope to see which skills consume the most tokens
 - **Consider skill size**: Large skills (1000+ tokens) can quickly inflate context when called repeatedly
 
-## Example Output
+## Report Shape
 
-```
-═══════════════════════════════════════════════════════════════════════════
-Token Analysis: Session ses_50c712089ffeshuuuJPmOoXCPX
-Model: claude-opus-4-5
-═══════════════════════════════════════════════════════════════════════════
+The report deliberately separates three layers:
 
-TOKEN BREAKDOWN BY CATEGORY
-─────────────────────────────────────────────────────────────────────────
-Estimated using tokenizer analysis of message content:
+1. **Local content inventory** — tokenizer estimates over retained text and replayable tool output.
+2. **Recorded usage snapshot** — non-overlapping OpenCode telemetry from completed provider steps.
+3. **Explanatory estimates** — public API-rate cost, cache savings, cached-context attribution, tool schemas, and catalogs.
 
-Input Categories:
-  SYSTEM    ██████████████░░░░░░░░░░░░░░░░    45.8% (22,367)
-  USER      ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░        0.8% (375)
-  TOOLS     ████████████████░░░░░░░░░░░░░░    53.5% (26,146)
-
-  Subtotal: 48,888 estimated input tokens
-
-Output Categories:
-  ASSISTANT ██████████████████████████████     100.0% (1,806)
-
-  Subtotal: 1,806 estimated output tokens
-
-Local Total: 50,694 tokens (estimated)
-
-TOOL USAGE BREAKDOWN
-─────────────────────────────────────────────────────────────────────────
-bash                 ██████████░░░░░░░░░░░░░░░░░░░░     34.0% (8,886)    4x
-read                 ██████████░░░░░░░░░░░░░░░░░░░░     33.1% (8,643)    3x
-task                 ████████░░░░░░░░░░░░░░░░░░░░░░     27.7% (7,245)    4x
-webfetch             █░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      4.9% (1,286)    1x
-tokenscope           ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░         0.3% (75)    2x
-batch                ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░         0.0% (11)    1x
-
-TOP CONTRIBUTORS
-─────────────────────────────────────────────────────────────────────────
-• System (inferred from API)   22,367 tokens (44.1%)
-• bash                         8,886 tokens (17.5%)
-• read                         8,643 tokens (17.0%)
-• task                         7,245 tokens (14.3%)
-• webfetch                     1,286 tokens (2.5%)
-
-═══════════════════════════════════════════════════════════════════════════
-MOST RECENT API CALL
-─────────────────────────────────────────────────────────────────────────
-
-Raw telemetry from last API response:
-  Input (fresh):              2 tokens
-  Cache read:            48,886 tokens
-  Cache write:               54 tokens
-  Output:                   391 tokens
-  ───────────────────────────────────
-  Total:                 49,333 tokens
-
-═══════════════════════════════════════════════════════════════════════════
-SESSION TOTALS (All 15 API calls)
-─────────────────────────────────────────────────────────────────────────
-
-Total tokens processed across the entire session (for cost calculation):
-
-  Input tokens:              10 (fresh tokens across all calls)
-  Cache read:           320,479 (cached tokens across all calls)
-  Cache write:           51,866 (tokens written to cache)
-  Output tokens:          3,331 (all model responses)
-  ───────────────────────────────────
-  Session Total:        375,686 tokens (for billing)
-
-═══════════════════════════════════════════════════════════════════════════
-ESTIMATED SESSION COST (API Key Pricing)
-─────────────────────────────────────────────────────────────────────────
-
-You appear to be on a subscription plan, so the public token cost estimate is shown below.
-Here's what this session would cost with direct API access:
-
-  Input tokens:              10 × $5.00/M  = $0.0001
-  Output tokens:          3,331 × $25.00/M  = $0.0833
-  Cache read:           320,479 × $0.50/M  = $0.1602
-  Cache write:           51,866 × $6.25/M  = $0.3242
-─────────────────────────────────────────────────────────────────────────
-ESTIMATED TOTAL: $0.5677
-
-Note: This estimate uses standard API pricing from models.json.
-Actual API costs may vary based on provider and context size.
-
-═══════════════════════════════════════════════════════════════════════════
-CONTEXT BREAKDOWN (Estimated from cache_write tokens)
-─────────────────────────────────────────────────────────────────────────
-
-  Base System Prompt   ████████████░░░░░░░░░░░░░░░░░░   ~42,816 tokens
-  Tool Definitions (14)██████░░░░░░░░░░░░░░░░░░░░░░░░    ~4,900 tokens
-  Environment Context  █░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      ~150 tokens
-  Project Tree         ████░░░░░░░░░░░░░░░░░░░░░░░░░░    ~4,000 tokens
-  ───────────────────────────────────────────────────────────────────────
-  Total Cached Context:                                  ~51,866 tokens
-
-  Note: Breakdown estimated from first cache_write. Actual distribution may vary.
-
-═══════════════════════════════════════════════════════════════════════════
-TOOL DEFINITION COSTS (Estimated from argument analysis)
-─────────────────────────────────────────────────────────────────────────
-
-  Tool                Est. Tokens   Args   Complexity
-  ───────────────────────────────────────────────────────────────────────
-  task                       ~480      3   complex (arrays/objects)
-  batch                      ~410      1   complex (arrays/objects)
-  edit                       ~370      4   simple
-  read                       ~340      3   simple
-  bash                       ~340      3   simple
-  ───────────────────────────────────────────────────────────────────────
-  Total:                   ~4,520 tokens (14 enabled tools)
-
-  Note: Estimates inferred from tool call arguments in this session.
-        Actual schema tokens may vary +/-20%.
-
-═══════════════════════════════════════════════════════════════════════════
-CACHE EFFICIENCY
-─────────────────────────────────────────────────────────────────────────
-
-  Token Distribution:
-    Cache Read:           320,479 tokens   ████████████████████████████░░  86.2%
-    Fresh Input:           51,320 tokens   ████░░░░░░░░░░░░░░░░░░░░░░░░░░  13.8%
-  ───────────────────────────────────────────────────────────────────────
-  Cache Hit Rate:      86.2%
-
-  Cost Analysis (claude-opus-4-5 @ $5.00/M input, $0.50/M cache read):
-    Without caching:   $1.8590  (371,799 tokens x $5.00/M)
-    With caching:      $0.4169  (fresh x $5.00/M + cached x $0.50/M)
-  ───────────────────────────────────────────────────────────────────────
-  Cost Savings:        $1.4421  (77.6% reduction)
-  Effective Rate:      $1.12/M tokens  (vs. $5.00/M standard)
-
-═══════════════════════════════════════════════════════════════════════════
-SUBAGENT COSTS (4 child sessions, 23 API calls)
-─────────────────────────────────────────────────────────────────────────
-
-  docs                         $0.3190  (194,701 tokens, 8 calls)
-  general                      $0.2957  (104,794 tokens, 4 calls)
-  docs                         $0.2736  (69,411 tokens, 4 calls)
-  general                      $0.5006  (197,568 tokens, 7 calls)
-─────────────────────────────────────────────────────────────────────────
-Subagent Total:            $1.3888  (566,474 tokens, 23 calls)
-
-═══════════════════════════════════════════════════════════════════════════
-SUMMARY
-─────────────────────────────────────────────────────────────────────────
-
-                          Cost        Tokens          API Calls
-  Main session:      $    0.5677       375,686            15
-  Subagents:         $    1.3888       566,474            23
-─────────────────────────────────────────────────────────────────────────
-  TOTAL:             $    1.9565       942,160            38
-
-═══════════════════════════════════════════════════════════════════════════
-
-```
+Warnings appear at the top whenever pricing, tokenizer, metadata, export, or child-session data is unavailable. The summary uses recorded cost when OpenCode stored a non-zero value; otherwise it uses the visibly labeled API-rate estimate.
 
 ## Supported Models
 
-**Pricing data is synced from models.dev across thousands of provider/model entries:**
+**Pricing resolution uses live OpenCode metadata first; the bundled fallback covers thousands of models.dev-derived provider/model entries:**
 
 ### Claude Models
 - Claude Opus 4.5, 4.1, 4
@@ -429,7 +290,7 @@ Example user override:
 ```
 
 Set any option to `false` to hide that section from the output.
-Set `enableDetailedSubagentCostBreakdown` to `true` to expand the subagent section with per-session token buckets and estimated API-rate cost splits. In API-key sessions, the main subagent cost remains OpenCode's actual recorded API cost, so the estimated split may not sum exactly to that value.
+Set `enableDetailedSubagentCostBreakdown` to `true` to expand the subagent section with per-session token buckets and estimated API-rate cost splits. When OpenCode records a nonzero child cost, that value remains the displayed subagent total, so the estimated split may not sum exactly to it.
 
 ## Troubleshooting
 
@@ -444,14 +305,15 @@ Set `enableDetailedSubagentCostBreakdown` to `true` to expand the subagent secti
 
 ### Wrong Token Counts
 
-The plugin uses API telemetry (ground truth). If counts seem off:
-- **Expected ~2K difference from TUI**: Plugin analyzes before its own response is added
+The plugin uses persisted OpenCode telemetry as the source of truth for recoverable completed provider steps. If counts seem off:
+- **Current-turn difference from the TUI**: TokenScope runs before OpenCode persists the provider step that invoked it, and before later report-reading/final-response steps
 - **Approximate fallback warning**: If the report says token counting fell back to approximate mode, reinstall the plugin (`npm install -g @ramtinj95/opencode-tokenscope@latest`) or rerun `~/.config/opencode/plugin/install.sh`
 - **Model detection**: Check that the model name is recognized in the output
 
 ## Privacy & Security
 
 - **All processing is local**: No session data sent to external services
+- **Private reports**: Report directories use owner-only permissions on Unix and live outside analyzed worktrees
 - **Open source**: Audit the code yourself
 
 ## Contributing

@@ -52,7 +52,7 @@ export interface TokenUsage {
 }
 
 export type SessionMessagePart =
-  | { type: "text"; text: string; synthetic?: boolean }
+  | { type: "text"; text: string; synthetic?: boolean; ignored?: boolean }
   | { type: "reasoning"; text: string }
   | { type: "tool"; tool: string; state: ToolState }
   | { type: string; [key: string]: unknown }
@@ -61,6 +61,7 @@ export interface ToolState {
   status: "pending" | "running" | "completed" | "error"
   input?: Record<string, unknown>
   output?: string
+  error?: string
   title?: string
   metadata?: Record<string, unknown>
   time?: {
@@ -139,7 +140,7 @@ export interface CategoryEntrySource {
 }
 
 export interface CostEstimate {
-  isSubscription: boolean
+  usesEstimatedCost: boolean
   apiSessionCost: number
   apiMostRecentCost: number
   estimatedSessionCost: number
@@ -185,7 +186,7 @@ export interface ModelTokenUsageSegment {
   apiCallCount: number
 }
 
-export type PricingTier = "context_over_200k" | "mixed_context_tiers"
+export type PricingTier = "context_tier" | "mixed_context_tiers"
 
 export interface TokenCostBreakdown {
   estimatedSessionCost: number
@@ -199,6 +200,7 @@ export interface TokenCostBreakdown {
   pricePerMillionCacheRead: number
   pricePerMillionCacheWrite: number
   pricingTier?: PricingTier
+  pricingTierThreshold?: number
 }
 
 export interface ModelCostEstimate extends ModelTokenUsage, TokenCostBreakdown {
@@ -388,6 +390,13 @@ export interface ModelPricing {
   cacheWrite: number
   cacheRead: number
   contextWindow?: number
+  tiers?: Array<{
+    input: number
+    output: number
+    cacheWrite: number
+    cacheRead: number
+    threshold: number
+  }>
   contextOver200k?: {
     input: number
     output: number
@@ -401,6 +410,16 @@ export interface ChildSession {
   id: string
   title: string
   parentID?: string
+  agent?: string
+}
+
+export interface SessionAggregateInfo {
+  id?: string
+  cost?: number
+  tokens?: TokenUsage
+  revert?: {
+    messageID?: string
+  }
 }
 
 // Type guards
@@ -413,6 +432,6 @@ export function isReasoningPart(part: SessionMessagePart): part is { type: "reas
   return part.type === "reasoning"
 }
 
-export function isTextPart(part: SessionMessagePart): part is { type: "text"; text: string; synthetic?: boolean } {
+export function isTextPart(part: SessionMessagePart): part is { type: "text"; text: string; synthetic?: boolean; ignored?: boolean } {
   return part.type === "text"
 }

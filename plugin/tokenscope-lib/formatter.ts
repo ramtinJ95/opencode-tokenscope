@@ -17,6 +17,7 @@ import {
   collectTopEntries,
   formatCategoryBar,
   formatNumber,
+  formatUsd,
   TOOL_LABEL_WIDTH,
   TOP_CONTRIBUTOR_LABEL_WIDTH,
 } from "./formatter-helpers.js"
@@ -135,20 +136,20 @@ export class OutputFormatter {
   ): string {
     const lines: string[] = []
     const sessionTotal = inputTokens + cacheReadTokens + cacheWriteTokens + outputTokens + reasoningTokens
-    const mainCost = cost.isSubscription ? cost.estimatedSessionCost : cost.apiSessionCost
+    const mainCost = cost.usesEstimatedCost ? cost.estimatedSessionCost : cost.apiSessionCost
     const subagentDisplayCost = (apiCost: number, estimatedCost: number) => (apiCost > 0 ? apiCost : estimatedCost)
     const subagentTotalDisplayCost =
       subagentAnalysis?.subagents.reduce(
         (sum, subagent) => sum + subagentDisplayCost(subagent.apiCost, subagent.estimatedCost),
         0
       ) ?? 0
-    const hasActualSubagentCost = subagentAnalysis?.subagents.some((subagent) => subagent.apiCost > 0) ?? false
+    const hasRecordedSubagentCost = subagentAnalysis?.subagents.some((subagent) => subagent.apiCost > 0) ?? false
     const hasEstimatedSubagentCost = subagentAnalysis?.subagents.some((subagent) => subagent.apiCost <= 0) ?? false
-    const subagentCostBasis = hasActualSubagentCost
+    const subagentCostBasis = hasRecordedSubagentCost
       ? hasEstimatedSubagentCost
-        ? "displayed subagent costs use actual child API cost when available, otherwise estimated API-rate cost"
-        : "displayed subagent costs use actual child API cost"
-      : "displayed subagent costs use estimated API-rate cost"
+        ? "Displayed subagent costs use OpenCode-recorded child cost when available, otherwise estimated API-rate cost"
+        : "Displayed subagent costs use OpenCode-recorded child cost"
+      : "Displayed subagent costs use estimated API-rate cost"
 
     // Header
     lines.push(`\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550`)
@@ -169,7 +170,9 @@ export class OutputFormatter {
     // 1. TOKEN BREAKDOWN BY CATEGORY
     lines.push(`TOKEN BREAKDOWN BY CATEGORY`)
     lines.push(`\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
-    lines.push(`Estimated using tokenizer analysis of message content:`)
+    lines.push(`Locally tokenized retained message content (estimate):`)
+    lines.push(`This is a content inventory, not billable usage or an exact active-context snapshot.`)
+    lines.push(`Generated system prompts, provider framing, tool-call arguments, and media are not included.`)
     lines.push(``)
 
     const inputTotal = inputCategories.reduce((sum, cat) => sum + cat.tokens, 0)
@@ -194,7 +197,7 @@ export class OutputFormatter {
     lines.push(``)
     lines.push(`  Subtotal: ${formatNumber(outputTotal)} estimated output tokens`)
     lines.push(``)
-    lines.push(`Local Total: ${formatNumber(totalTokens)} tokens (estimated)`)
+    lines.push(`Local Content Total: ${formatNumber(totalTokens)} tokens (estimated)`)
 
     // 2. TOOL USAGE BREAKDOWN (right after token breakdown)
     if (toolEntries.length > 0) {
@@ -227,7 +230,7 @@ export class OutputFormatter {
     // 4. MOST RECENT API CALL
     lines.push(``)
     lines.push(`\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550`)
-    lines.push(`MOST RECENT API CALL`)
+    lines.push(`MOST RECENT RECORDED PROVIDER STEP`)
     lines.push(`\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
     lines.push(``)
     lines.push(`Raw telemetry from last API response:`)
@@ -244,7 +247,7 @@ export class OutputFormatter {
       lines.push(`  Provider total:    ${formatNumber(mostRecentProviderTotalTokens).padStart(10)} tokens`)
     }
     if (cost.apiMostRecentCost > 0) {
-      lines.push(`  Cost:              $${cost.apiMostRecentCost.toFixed(4)}`)
+      lines.push(`  Cost:              $${formatUsd(cost.apiMostRecentCost)}`)
     }
     lines.push(`  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
     lines.push(
@@ -254,7 +257,7 @@ export class OutputFormatter {
     // 5. SESSION TOTALS
     lines.push(``)
     lines.push(`\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550`)
-    lines.push(`SESSION TOTALS (All ${apiCallCount} API calls)`)
+    lines.push(`RECORDED USAGE SNAPSHOT (${apiCallCount} completed provider steps)`)
     lines.push(`\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
     lines.push(``)
     if (assistantMessageCount !== apiCallCount) {
@@ -262,7 +265,7 @@ export class OutputFormatter {
       lines.push(``)
     }
 
-    lines.push(`Total tokens processed across the entire session (for cost calculation):`)
+    lines.push(`Recoverable usage recorded before this TokenScope tool invocation completes:`)
     lines.push(``)
     lines.push(`  Input tokens:      ${formatNumber(inputTokens).padStart(10)} (fresh tokens across all calls)`)
     lines.push(`  Cache read:        ${formatNumber(cacheReadTokens).padStart(10)} (cached tokens across all calls)`)
@@ -272,7 +275,7 @@ export class OutputFormatter {
       lines.push(`  Reasoning tokens:  ${formatNumber(reasoningTokens).padStart(10)} (thinking/reasoning)`)
     }
     lines.push(`  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
-    lines.push(`  Session Total:     ${formatNumber(sessionTotal).padStart(10)} tokens (for billing)`)
+    lines.push(`  Recorded Total:    ${formatNumber(sessionTotal).padStart(10)} tokens (non-overlapping usage buckets)`)
     if (apiCallCount > 0) {
       lines.push(`  Cache read calls:  ${callsWithCacheRead.toString().padStart(10)} / ${apiCallCount}`)
       lines.push(`  Cache write calls: ${callsWithCacheWrite.toString().padStart(10)} / ${apiCallCount}`)
@@ -281,21 +284,21 @@ export class OutputFormatter {
     // 6. SESSION COST / ESTIMATED SESSION COST
     lines.push(``)
     lines.push(`\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550`)
-    if (cost.isSubscription) {
-      lines.push(`ESTIMATED SESSION COST (API Key Pricing)`)
+    if (cost.usesEstimatedCost) {
+      lines.push(`ESTIMATED API-RATE COST (OpenCode recorded $0)`)
       lines.push(`\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
       lines.push(``)
-      lines.push(`You appear to be on a subscription plan, so the public token cost estimate is shown below.`)
-      lines.push(`Here's what this session would cost with direct API access:`)
+      lines.push(`A zero OpenCode-recorded cost can mean subscription, free/local usage, or zero/missing pricing metadata.`)
+      lines.push(`The public API-rate estimate is shown separately; it is not an invoice.`)
       lines.push(``)
       lines.push(...formatCostEstimateLines(cost))
       lines.push(`\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
-      lines.push(`ESTIMATED TOTAL: $${cost.estimatedSessionCost.toFixed(4)}`)
+      lines.push(`ESTIMATED TOTAL: $${formatUsd(cost.estimatedSessionCost)}`)
       lines.push(``)
       lines.push(`Note: This estimate uses live OpenCode model metadata when available, then bundled models.json pricing.`)
       lines.push(`Actual API costs may vary based on provider and context size.`)
     } else {
-      lines.push(`SESSION COST`)
+      lines.push(`OPENCODE-RECORDED COST`)
       lines.push(`\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
       lines.push(``)
       lines.push(`Token usage breakdown:`)
@@ -317,16 +320,17 @@ export class OutputFormatter {
       }
       lines.push(``)
       lines.push(`\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
-      lines.push(`ACTUAL COST (from API):  $${cost.apiSessionCost.toFixed(4)}`)
+      lines.push(`RECORDED COST:           $${formatUsd(cost.apiSessionCost)}`)
       const diff = Math.abs(cost.apiSessionCost - cost.estimatedSessionCost)
       const diffPercent = cost.apiSessionCost > 0 ? (diff / cost.apiSessionCost) * 100 : 0
       if (diffPercent > 5) {
         lines.push(
-          `Estimated cost:          $${cost.estimatedSessionCost.toFixed(4)} (${diffPercent > 0 ? (cost.estimatedSessionCost > cost.apiSessionCost ? "+" : "-") : ""}${diffPercent.toFixed(1)}% diff)`
+          `Estimated cost:          $${formatUsd(cost.estimatedSessionCost)} (${diffPercent > 0 ? (cost.estimatedSessionCost > cost.apiSessionCost ? "+" : "-") : ""}${diffPercent.toFixed(1)}% diff)`
         )
       }
       lines.push(``)
-      lines.push(`Note: Actual cost is OpenCode-recorded provider cost. Estimates use live OpenCode model metadata when available, then bundled models.json pricing.`)
+      lines.push(`Note: Recorded cost is calculated by OpenCode from normalized usage and model pricing (Copilot may provide authoritative billed metadata).`)
+      lines.push(`      Estimates use live OpenCode model metadata when available, then bundled models.json pricing.`)
     }
 
     // 7. CONTEXT BREAKDOWN (if enabled and available)
@@ -364,18 +368,19 @@ export class OutputFormatter {
       lines.push(``)
       lines.push(`\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550`)
       lines.push(
-        `SUBAGENT COSTS (${subagentAnalysis.subagents.length} child sessions, ${subagentAnalysis.totalApiCalls} API calls)`
+        `SUBAGENT COSTS (${subagentAnalysis.subagents.length} child sessions, ${subagentAnalysis.totalApiCalls} completed provider steps)`
       )
       lines.push(`\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
       lines.push(``)
+      lines.push(`${subagentCostBasis}.`)
       if (this.config?.enableDetailedSubagentCostBreakdown) {
-        lines.push(`Detailed lines show token buckets plus estimated API-rate splits; ${subagentCostBasis}.`)
-        lines.push(``)
+        lines.push(`Detailed lines show token buckets plus estimated API-rate splits.`)
       }
+      lines.push(``)
       for (const subagent of subagentAnalysis.subagents) {
         const label = `${subagent.agentType}`.padEnd(subagentLabelWidth)
-        const costStr = `$${subagentDisplayCost(subagent.apiCost, subagent.estimatedCost).toFixed(4)}`
-        const tokensStr = `(${formatNumber(subagent.totalTokens)} tokens, ${subagent.apiCallCount} calls)`
+        const costStr = `$${formatUsd(subagentDisplayCost(subagent.apiCost, subagent.estimatedCost))}`
+        const tokensStr = `(${formatNumber(subagent.totalTokens)} tokens, ${subagent.apiCallCount} steps)`
         lines.push(`  ${label} ${costStr.padStart(10)}  ${tokensStr}`)
         if (this.config?.enableDetailedSubagentCostBreakdown) {
           lines.push(
@@ -397,7 +402,7 @@ export class OutputFormatter {
       }
       lines.push(`\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
       lines.push(
-        `Subagent Total:${" ".repeat(subagentLabelWidth - 14)} $${subagentTotalDisplayCost.toFixed(4)}  (${formatNumber(subagentAnalysis.totalTokens)} tokens, ${subagentAnalysis.totalApiCalls} calls)`
+        `Subagent Total:${" ".repeat(subagentLabelWidth - 14)} $${formatUsd(subagentTotalDisplayCost)}  (${formatNumber(subagentAnalysis.totalTokens)} tokens, ${subagentAnalysis.totalApiCalls} steps)`
       )
       if (this.config?.enableDetailedSubagentCostBreakdown) {
         lines.push(
@@ -427,7 +432,9 @@ export class OutputFormatter {
     lines.push(`SUMMARY`)
     lines.push(`\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
     lines.push(``)
-    lines.push(`                          Cost        Tokens          API Calls`)
+    lines.push(`  Cost basis: OpenCode-recorded where nonzero; otherwise estimated API-rate cost.`)
+    lines.push(``)
+    lines.push(`                          Cost        Tokens      Provider Steps`)
 
     if (subagentAnalysis && subagentAnalysis.subagents.length > 0) {
       const grandTotalCost = mainCost + subagentTotalDisplayCost
@@ -435,18 +442,18 @@ export class OutputFormatter {
       const grandTotalApiCalls = apiCallCount + subagentAnalysis.totalApiCalls
 
       lines.push(
-        `  Main session:      $${mainCost.toFixed(4).padStart(10)}    ${formatNumber(sessionTotal).padStart(10)}         ${apiCallCount.toString().padStart(5)}`
+        `  Main session:      $${formatUsd(mainCost).padStart(10)}    ${formatNumber(sessionTotal).padStart(10)}         ${apiCallCount.toString().padStart(5)}`
       )
       lines.push(
-        `  Subagents:         $${subagentTotalDisplayCost.toFixed(4).padStart(10)}    ${formatNumber(subagentAnalysis.totalTokens).padStart(10)}         ${subagentAnalysis.totalApiCalls.toString().padStart(5)}`
+        `  Subagents:         $${formatUsd(subagentTotalDisplayCost).padStart(10)}    ${formatNumber(subagentAnalysis.totalTokens).padStart(10)}         ${subagentAnalysis.totalApiCalls.toString().padStart(5)}`
       )
       lines.push(`\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
       lines.push(
-        `  TOTAL:             $${grandTotalCost.toFixed(4).padStart(10)}    ${formatNumber(grandTotalTokens).padStart(10)}         ${grandTotalApiCalls.toString().padStart(5)}`
+        `  TOTAL:             $${formatUsd(grandTotalCost).padStart(10)}    ${formatNumber(grandTotalTokens).padStart(10)}         ${grandTotalApiCalls.toString().padStart(5)}`
       )
     } else {
       lines.push(
-        `  Session:           $${mainCost.toFixed(4).padStart(10)}    ${formatNumber(sessionTotal).padStart(10)}         ${apiCallCount.toString().padStart(5)}`
+        `  Session:           $${formatUsd(mainCost).padStart(10)}    ${formatNumber(sessionTotal).padStart(10)}         ${apiCallCount.toString().padStart(5)}`
       )
     }
 

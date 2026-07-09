@@ -2,7 +2,6 @@
 
 import type { Plugin } from "@opencode-ai/plugin"
 import { tool } from "@opencode-ai/plugin/tool"
-import path from "path"
 
 import type { SessionMessage } from "./tokenscope-lib/types.js"
 import { DEFAULT_ENTRY_LIMIT, loadModelPricing, loadTokenscopeConfig } from "./tokenscope-lib/config.js"
@@ -13,13 +12,14 @@ import { SubagentAnalyzer } from "./tokenscope-lib/subagent.js"
 import { OutputFormatter } from "./tokenscope-lib/formatter.js"
 import { ContextAnalyzer } from "./tokenscope-lib/context.js"
 import { SkillAnalyzer } from "./tokenscope-lib/skill.js"
-import { fetchSessionMessages, unwrapResponseData } from "./tokenscope-lib/opencode.js"
+import { fetchSession, fetchSessionMessages, unwrapResponseData } from "./tokenscope-lib/opencode.js"
 import { ModelMetadataResolver } from "./tokenscope-lib/metadata.js"
 import { WarningCollector, formatErrorMessage } from "./tokenscope-lib/warnings.js"
-import { buildFailureReport, buildSuccessSummary, REPORT_FILENAME, writeReport } from "./tokenscope-lib/report.js"
+import { buildFailureReport, buildSuccessSummary, createReportPath, writeReport } from "./tokenscope-lib/report.js"
 import {
   addModelSupportWarnings,
   addPerModelPricingWarnings,
+  addSessionAggregateWarnings,
   attachConfiguredAnalyses,
   resolveSessionID,
 } from "./tokenscope-lib/session-workflow.js"
@@ -50,7 +50,6 @@ export const TokenAnalyzerPlugin: Plugin = async ({ client, serverUrl, directory
         },
         async execute(args, context) {
           const sessionDirectory = context.directory || directory || process.cwd()
-          const outputPath = path.join(sessionDirectory, REPORT_FILENAME)
           const warnings = new WarningCollector()
           const tokenizerManager = new TokenizerManager(warnings)
           const analysisEngine = new TokenAnalysisEngine(tokenizerManager, contentCollector)
@@ -59,6 +58,12 @@ export const TokenAnalyzerPlugin: Plugin = async ({ client, serverUrl, directory
           const skillAnalyzer = new SkillAnalyzer(client, tokenizerManager, serverUrl, sessionDirectory, warnings)
 
           const sessionID = resolveSessionID(args.sessionID, context.sessionID)
+          let outputPath: string
+          try {
+            outputPath = await createReportPath(sessionID, context.messageID)
+          } catch (error) {
+            return `TokenScope could not create a private temporary report location: ${formatErrorMessage(error)}`
+          }
           if (!sessionID) {
             const output = buildFailureReport(undefined, warnings.list(), "No session ID available for token analysis")
             const writeError = await writeReport(outputPath, output)
@@ -98,6 +103,16 @@ export const TokenAnalyzerPlugin: Plugin = async ({ client, serverUrl, directory
               args.limitMessages ?? DEFAULT_ENTRY_LIMIT
             )
             analysis.pricingModelName = pricingModelName
+
+            try {
+              const sessionResponse = await fetchSession(client, sessionID, routing)
+              addSessionAggregateWarnings(warnings, analysis, unwrapResponseData(sessionResponse ?? {}))
+            } catch (error) {
+              warnings.add(
+                `Could not reconcile message telemetry with the OpenCode session aggregate: ${formatErrorMessage(error)}`,
+                `session-aggregate-fetch:${sessionID}`
+              )
+            }
 
             addPerModelPricingWarnings(warnings, costCalculator, analysis, pricingModelName)
             await attachConfiguredAnalyses({

@@ -76,8 +76,11 @@ type ProviderContextCost = {
   threshold?: number
 }
 
-type LiveModelPricing = Partial<Omit<ModelPricing, "contextOver200k">> & {
+type ProviderTierCost = ProviderContextCost & { threshold: number }
+
+type LiveModelPricing = Partial<Omit<ModelPricing, "contextOver200k" | "tiers">> & {
   contextOver200k?: Partial<NonNullable<ModelPricing["contextOver200k"]>>
+  tiers?: NonNullable<ModelPricing["tiers"]>
 }
 
 type PricingLike = {
@@ -91,6 +94,13 @@ type PricingLike = {
     cacheRead?: number
     cacheWrite?: number
   }
+  tiers?: Array<{
+    input?: number
+    output?: number
+    cacheRead?: number
+    cacheWrite?: number
+    threshold: number
+  }>
 }
 
 export class ModelMetadataResolver {
@@ -173,6 +183,7 @@ export class ModelMetadataResolver {
     const cacheWrite = this.safeNumber(model.cost.cache?.write) ?? this.safeNumber(model.cost.cache_write)
     const contextWindow = this.safeNumber(model.limit?.context)
     const contextOver200k = this.extractContextOver200k(model.cost)
+    const tiers = this.extractTiers(model.cost)
 
     return {
       input,
@@ -180,35 +191,54 @@ export class ModelMetadataResolver {
       cacheRead,
       cacheWrite,
       contextWindow,
-      contextOver200k: contextOver200k ? this.toContextPricing(contextOver200k, input, output, cacheRead, cacheWrite) : undefined,
+      tiers: tiers.length > 0 ? tiers.map((tier) => this.toTierPricing(tier, input, output)) : undefined,
+      contextOver200k: contextOver200k ? this.toContextPricing(contextOver200k, input, output) : undefined,
     }
   }
 
   private extractContextOver200k(cost: NonNullable<ProviderListModel["cost"]>): ProviderContextCost | undefined {
     if (cost.experimentalOver200K) return { ...cost.experimentalOver200K }
     if (cost.context_over_200k) return { ...cost.context_over_200k }
+    return undefined
+  }
 
-    const tier = cost.tiers
-      ?.filter((tier) => tier.tier?.type === "context" && this.safeNumber(tier.tier.size) !== undefined)
-      .sort((a, b) => this.safeNumber(a.tier?.size)! - this.safeNumber(b.tier?.size)!)
-      .find((tier) => this.safeNumber(tier.tier?.size)! >= 200_000)
+  private extractTiers(cost: NonNullable<ProviderListModel["cost"]>): ProviderTierCost[] {
+    return (cost.tiers ?? [])
+      .flatMap((tier) => {
+        if (tier.tier?.type !== "context") return []
+        const threshold = this.safeNumber(tier.tier.size)
+        if (threshold === undefined) return []
+        return [{ ...tier, threshold }]
+      })
+      .sort((a, b) => a.threshold - b.threshold)
+  }
 
-    if (!tier) return undefined
-    return { ...tier, threshold: this.safeNumber(tier.tier?.size) }
+  private toTierPricing(
+    tier: ProviderTierCost,
+    input: number | undefined,
+    output: number | undefined
+  ): NonNullable<ModelPricing["tiers"]>[number] {
+    return {
+      input: this.safeNumber(tier.input) ?? input ?? 0,
+      output: this.safeNumber(tier.output) ?? output ?? 0,
+      // OpenCode maps omitted tier cache rates to zero rather than inheriting
+      // the model's base cache prices.
+      cacheRead: this.safeNumber(tier.cache?.read) ?? this.safeNumber(tier.cache_read) ?? 0,
+      cacheWrite: this.safeNumber(tier.cache?.write) ?? this.safeNumber(tier.cache_write) ?? 0,
+      threshold: tier.threshold,
+    }
   }
 
   private toContextPricing(
     contextCost: ProviderContextCost,
     input: number | undefined,
-    output: number | undefined,
-    cacheRead: number | undefined,
-    cacheWrite: number | undefined
+    output: number | undefined
   ): Partial<NonNullable<ModelPricing["contextOver200k"]>> {
     const pricing: Partial<NonNullable<ModelPricing["contextOver200k"]>> = {
       input: this.safeNumber(contextCost.input) ?? input,
       output: this.safeNumber(contextCost.output) ?? output,
-      cacheRead: this.safeNumber(contextCost.cache?.read) ?? this.safeNumber(contextCost.cache_read) ?? cacheRead,
-      cacheWrite: this.safeNumber(contextCost.cache?.write) ?? this.safeNumber(contextCost.cache_write) ?? cacheWrite,
+      cacheRead: this.safeNumber(contextCost.cache?.read) ?? this.safeNumber(contextCost.cache_read) ?? 0,
+      cacheWrite: this.safeNumber(contextCost.cache?.write) ?? this.safeNumber(contextCost.cache_write) ?? 0,
     }
 
     const threshold = this.safeNumber(contextCost.threshold)
@@ -228,6 +258,7 @@ export class ModelMetadataResolver {
       cacheRead,
       cacheWrite,
       contextWindow: live.contextWindow ?? base?.contextWindow,
+      tiers: live.tiers ?? base?.tiers,
       contextOver200k: this.mergeContextOver200k(base?.contextOver200k, live.contextOver200k, {
         input,
         output,
@@ -250,6 +281,7 @@ export class ModelMetadataResolver {
       pricing.output,
       pricing.cacheRead,
       pricing.cacheWrite,
+      ...(pricing.tiers ?? []).flatMap((tier) => [tier.input, tier.output, tier.cacheRead, tier.cacheWrite]),
       pricing.contextOver200k?.input,
       pricing.contextOver200k?.output,
       pricing.contextOver200k?.cacheRead,
