@@ -101,16 +101,12 @@ test("ModelMetadataResolver reads current OpenCode nested cache and tier pricing
     cacheRead: 0.3,
     cacheWrite: 3.75,
     contextWindow: 1_000_000,
-    contextOver200k: {
-      input: 6,
-      output: 22.5,
-      cacheRead: 0.6,
-      cacheWrite: 7.5,
-    },
+    tiers: [{ input: 6, output: 22.5, cacheRead: 0.6, cacheWrite: 7.5, threshold: 200_000 }],
+    contextOver200k: undefined,
   })
 })
 
-test("ModelMetadataResolver preserves non-200K context tier thresholds", async () => {
+test("ModelMetadataResolver preserves arbitrary context tier thresholds", async () => {
   const client = {
     provider: {
       async list() {
@@ -145,12 +141,61 @@ test("ModelMetadataResolver preserves non-200K context tier thresholds", async (
 
   const pricing = await new ModelMetadataResolver(client).mergePricingData({})
 
+  expect(pricing["provider/model"]?.tiers).toEqual([
+    { input: 3, output: 6, cacheRead: 0.3, cacheWrite: 3, threshold: 400_000 },
+  ])
+})
+
+test("ModelMetadataResolver retains multiple sub-200K tiers ahead of the legacy fallback", async () => {
+  const client = {
+    provider: {
+      async list() {
+        return {
+          all: [
+            {
+              id: "provider",
+              models: {
+                model: {
+                  id: "model",
+                  cost: {
+                    input: 1,
+                    output: 2,
+                    cache: { read: 0.1, write: 1 },
+                    tiers: [
+                      { input: 3, output: 4, tier: { type: "context", size: 32_000 } },
+                      {
+                        input: 5,
+                        output: 6,
+                        cache: { read: 0.5, write: 2 },
+                        tier: { type: "context", size: 128_000 },
+                      },
+                    ],
+                    experimentalOver200K: {
+                      input: 100,
+                      output: 100,
+                      cache: { read: 100, write: 100 },
+                    },
+                  },
+                },
+              },
+            },
+          ],
+        }
+      },
+    },
+  }
+
+  const pricing = await new ModelMetadataResolver(client).mergePricingData({})
+
+  expect(pricing["provider/model"]?.tiers).toEqual([
+    { input: 3, output: 4, cacheRead: 0, cacheWrite: 0, threshold: 32_000 },
+    { input: 5, output: 6, cacheRead: 0.5, cacheWrite: 2, threshold: 128_000 },
+  ])
   expect(pricing["provider/model"]?.contextOver200k).toEqual({
-    input: 3,
-    output: 6,
-    cacheRead: 0.3,
-    cacheWrite: 3,
-    threshold: 400_000,
+    input: 100,
+    output: 100,
+    cacheRead: 100,
+    cacheWrite: 100,
   })
 })
 
@@ -500,7 +545,7 @@ test("ModelMetadataResolver does not overwrite bare aliases when live model IDs 
   expect(pricing["provider-b/shared"]).toMatchObject({ input: 8, output: 32 })
 })
 
-test("ModelMetadataResolver merges partial 200K context pricing against normal cache rates", async () => {
+test("ModelMetadataResolver maps omitted legacy context cache rates to zero like OpenCode", async () => {
   const client = {
     provider: {
       async list() {
@@ -533,7 +578,7 @@ test("ModelMetadataResolver merges partial 200K context pricing against normal c
   expect(pricing["anthropic/claude-sonnet-4-20250514"]?.contextOver200k).toEqual({
     input: 8,
     output: 24,
-    cacheRead: 0.3,
-    cacheWrite: 3.75,
+    cacheRead: 0,
+    cacheWrite: 0,
   })
 })

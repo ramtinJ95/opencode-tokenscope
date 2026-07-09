@@ -55,9 +55,11 @@ export class ModelResolver {
   }
 
   resolveTokenModel(messages: SessionMessage[]): TokenModel {
+    let fallbackModelName: string | undefined
     for (const message of [...messages].reverse()) {
       const modelID = this.canonicalize(this.getModelID(message))
       const providerID = this.canonicalize(this.getProviderID(message))
+      fallbackModelName ??= modelID
 
       const openaiModel = this.resolveOpenAIModel(modelID, providerID)
       if (openaiModel) return openaiModel
@@ -66,11 +68,15 @@ export class ModelResolver {
       if (huggingFaceTokenizerModel) return huggingFaceTokenizerModel
     }
 
-    return { name: "approx", spec: { kind: "approx" } }
+    return { name: fallbackModelName ?? "unknown", spec: { kind: "approx" } }
   }
 
   private resolveOpenAIModel(modelID?: string, providerID?: string): TokenModel | undefined {
-    if (providerID === "openai" || providerID === "opencode" || providerID === "azure") {
+    const isOpenAIModel =
+      !!modelID &&
+      (!!OPENAI_MODEL_MAP[modelID] || modelID.startsWith("gpt-") || modelID.startsWith("chatgpt-") || /^o\d(?:-|$)/.test(modelID))
+
+    if (providerID === "openai" || providerID === "azure" || isOpenAIModel) {
       const mapped = this.mapOpenAI(modelID)
       return { name: modelID ?? mapped, spec: { kind: "tiktoken", model: mapped } }
     }
@@ -118,7 +124,9 @@ export class ModelResolver {
 
   private mapOpenAI(modelID?: string): string {
     if (!modelID) return "cl100k_base"
-    return OPENAI_MODEL_MAP[modelID] ?? modelID
+    if (OPENAI_MODEL_MAP[modelID]) return OPENAI_MODEL_MAP[modelID]
+    if (modelID.startsWith("gpt-") || modelID.startsWith("chatgpt-") || /^o\d(?:-|$)/.test(modelID)) return "gpt-4o"
+    return modelID
   }
 
   private getProviderID(message: SessionMessage): string | undefined {
@@ -213,9 +221,19 @@ export class ContentCollector {
       for (const part of message.parts) {
         if (!toolGuard(part)) continue
 
-        if (part.state.status !== "completed") continue
+        let rawOutput: unknown
+        if (part.state.status === "completed") {
+          rawOutput = part.state.time?.compacted ? compactedPlaceholder : part.state.output
+        } else if (part.state.status === "error") {
+          const interruptedOutput =
+            part.state.metadata?.interrupted === true && typeof part.state.metadata.output === "string"
+              ? part.state.metadata.output
+              : undefined
+          rawOutput = interruptedOutput ?? part.state.error
+        } else {
+          continue
+        }
 
-        const rawOutput = part.state.time?.compacted ? compactedPlaceholder : part.state.output
         const output = (rawOutput ?? "").toString().trim()
         if (!output) continue
 
@@ -274,6 +292,7 @@ export class ContentCollector {
   private extractText(parts: SessionMessagePart[]): string {
     return parts
       .filter(textGuard)
+      .filter((part) => part.ignored !== true)
       .map((part) => part.text ?? "")
       .map((text) => text.trim())
       .filter(Boolean)
@@ -413,25 +432,6 @@ export class TokenAnalysisEngine {
     analysis.mostRecentCacheWrite = telemetry.mostRecentCacheWrite
     analysis.mostRecentProviderTotalTokens = telemetry.mostRecentProviderTotalTokens
     analysis.perModelUsage = telemetry.perModelUsage
-
-    const recentApiInputTotal = telemetry.mostRecentInput + telemetry.mostRecentCacheRead
-    const localUserAndTools = analysis.categories.user.totalTokens + analysis.categories.tools.totalTokens
-    const inferredPromptOverheadTokens = Math.max(0, recentApiInputTotal - localUserAndTools)
-    const hasExplicitSystem = analysis.categories.system.totalTokens > 0
-    const strongInferenceSignal =
-      inferredPromptOverheadTokens >= 300 &&
-      inferredPromptOverheadTokens >= recentApiInputTotal * 0.15 &&
-      inferredPromptOverheadTokens >= localUserAndTools * 0.1
-
-    if (inferredPromptOverheadTokens >= 50 && !hasExplicitSystem) {
-      const inferredLabel = strongInferenceSignal
-        ? "System (inferred from API telemetry)"
-        : "Unattributed prompt overhead (inferred)"
-
-      analysis.categories.system.totalTokens = inferredPromptOverheadTokens
-      analysis.categories.system.entries = [{ label: inferredLabel, tokens: inferredPromptOverheadTokens }]
-      analysis.categories.system.allEntries = analysis.categories.system.entries
-    }
 
     analysis.totalTokens =
       analysis.categories.system.totalTokens +

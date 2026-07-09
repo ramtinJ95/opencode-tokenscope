@@ -4,6 +4,8 @@ import {
   formatContextBar,
   formatEfficiencyBar,
   formatNumber,
+  formatRate,
+  formatUsd,
   SKILL_DESC_WIDTH,
   SKILL_NAME_WIDTH,
   SUBAGENT_DESC_WIDTH,
@@ -27,7 +29,8 @@ export function formatContextBreakdown(breakdown: ContextBreakdown): string[] {
   lines.push(``)
 
   if (breakdown.baseSystemPrompt.tokens > 0) {
-    const bar = formatContextBar("Base System Prompt", breakdown.baseSystemPrompt.tokens, total)
+    const label = breakdown.baseSystemPrompt.identified ? "Base System Prompt" : "Other Cached Prompt"
+    const bar = formatContextBar(label, breakdown.baseSystemPrompt.tokens, total)
     lines.push(`  ${bar}`)
   }
 
@@ -65,10 +68,10 @@ export function formatContextBreakdown(breakdown: ContextBreakdown): string[] {
   }
 
   lines.push(`  ───────────────────────────────────────────────────────────────────`)
-  lines.push(`  Total Cached Context:${" ".repeat(34)}~${formatNumber(total)} tokens`)
+  lines.push(`  First Cache Write:${" ".repeat(36)}${formatNumber(total)} tokens`)
   lines.push(``)
   if (isEstimated) {
-    lines.push(`  Note: Breakdown estimated from first cache_write. Actual distribution may vary.`)
+    lines.push(`  Note: First cache_write is an observed count; component attribution is heuristic.`)
   } else {
     lines.push(`  Note: Values from tokenizing actual system prompt content.`)
   }
@@ -78,9 +81,9 @@ export function formatContextBreakdown(breakdown: ContextBreakdown): string[] {
 
 export function formatToolEstimates(estimates: ToolSchemaEstimate[]): string[] {
   const lines: string[] = []
-  const enabledEstimates = estimates.filter((e) => e.enabled)
-  const totalTokens = enabledEstimates.reduce((sum, e) => sum + e.estimatedTokens, 0)
-  const usesOpenCodeMetadata = enabledEstimates.some((estimate) => estimate.source === "opencode-api")
+  const listedEstimates = estimates.filter((e) => e.enabled)
+  const totalTokens = listedEstimates.reduce((sum, e) => sum + e.estimatedTokens, 0)
+  const usesOpenCodeMetadata = listedEstimates.some((estimate) => estimate.source === "opencode-api")
 
   lines.push(``)
   lines.push(`═══════════════════════════════════════════════════════════════════════════`)
@@ -94,7 +97,7 @@ export function formatToolEstimates(estimates: ToolSchemaEstimate[]): string[] {
   lines.push(`  ${"Tool".padEnd(TOOL_ESTIMATE_LABEL_WIDTH)} ${"Est. Tokens".padStart(12)}   Args   Complexity`)
   lines.push(`  ───────────────────────────────────────────────────────────────────`)
 
-  for (const estimate of enabledEstimates) {
+  for (const estimate of listedEstimates) {
     const name = estimate.name.padEnd(TOOL_ESTIMATE_LABEL_WIDTH)
     const tokens = `~${formatNumber(estimate.estimatedTokens)}`.padStart(12)
     const args = estimate.argumentCount.toString().padStart(5)
@@ -104,12 +107,12 @@ export function formatToolEstimates(estimates: ToolSchemaEstimate[]): string[] {
 
   lines.push(`  ───────────────────────────────────────────────────────────────────`)
   lines.push(
-    `  Total:${" ".repeat(TOOL_ESTIMATE_LABEL_WIDTH - 6)} ~${formatNumber(totalTokens).padStart(11)} tokens (${enabledEstimates.length} enabled tools)`
+    `  Total:${" ".repeat(TOOL_ESTIMATE_LABEL_WIDTH - 6)} ~${formatNumber(totalTokens).padStart(11)} tokens (${listedEstimates.length} ${usesOpenCodeMetadata ? "tools returned by metadata" : "observed tools"})`
   )
   lines.push(``)
   if (usesOpenCodeMetadata) {
     lines.push(`  Note: Tokenized from the current OpenCode tool descriptions and JSON schemas.`)
-    lines.push(`        Provider-specific schema wrapping may still add small overhead.`)
+    lines.push(`        Active-agent permissions, MCP tools, and provider schema transforms may differ.`)
   } else {
     lines.push(`  Note: Estimates inferred from tool call arguments in this session.`)
     lines.push(`        Actual schema tokens may vary +/-20%.`)
@@ -152,8 +155,8 @@ export function formatCacheEfficiency(efficiency: CacheEfficiency, cost: CostEst
 
   if (cost.perModelCosts.length > 1) {
     lines.push(`  Cost Analysis (per-model pricing across ${cost.perModelCosts.length} models):`)
-    lines.push(`    Without caching:   $${modelAwareEfficiency.costWithoutCaching.toFixed(4)}`)
-    lines.push(`    With caching:      $${modelAwareEfficiency.costWithCaching.toFixed(4)}`)
+    lines.push(`    Without caching:   $${formatUsd(modelAwareEfficiency.costWithoutCaching)}`)
+    lines.push(`    With caching:      $${formatUsd(modelAwareEfficiency.costWithCaching)}`)
   } else {
     const modelCost = cost.perModelCosts[0]
     const inputRate = modelCost?.pricePerMillionInput ?? cost.pricePerMillionInput
@@ -161,27 +164,27 @@ export function formatCacheEfficiency(efficiency: CacheEfficiency, cost: CostEst
     const cacheReadRate = modelCost?.pricePerMillionCacheRead ?? cost.pricePerMillionCacheRead
     const cacheWriteRate = modelCost?.pricePerMillionCacheWrite ?? cost.pricePerMillionCacheWrite
     const tierLabel =
-      modelCost?.pricingTier === "context_over_200k"
-        ? ", 200K+ context rates"
+      modelCost?.pricingTier === "context_tier"
+        ? `, >${formatNumber(modelCost.pricingTierThreshold ?? 200_000)} context-token rates`
         : modelCost?.pricingTier === "mixed_context_tiers"
           ? ", mixed context rates"
           : ""
     lines.push(
-      `  Cost Analysis (${modelName} @ $${inputRate.toFixed(2)}/M input, $${cacheReadRate.toFixed(2)}/M cache read, $${cacheWriteRate.toFixed(2)}/M cache write${tierLabel}):`
+      `  Cost Analysis (${modelName} @ $${formatRate(inputRate)}/M input, $${formatRate(cacheReadRate)}/M cache read, $${formatRate(cacheWriteRate)}/M cache write${tierLabel}):`
     )
     lines.push(
-      `    Without caching:   $${modelAwareEfficiency.costWithoutCaching.toFixed(4)}  (${formatNumber(total)} tokens x $${uncachedInputRate.toFixed(2)}/M)`
+      `    Without caching:   $${formatUsd(modelAwareEfficiency.costWithoutCaching)}  (${formatNumber(total)} tokens x $${formatRate(uncachedInputRate)}/M)`
     )
     lines.push(
-      `    With caching:      $${modelAwareEfficiency.costWithCaching.toFixed(4)}  (fresh x $${inputRate.toFixed(2)}/M + cache read x $${cacheReadRate.toFixed(2)}/M + cache write x $${cacheWriteRate.toFixed(2)}/M)`
+      `    With caching:      $${formatUsd(modelAwareEfficiency.costWithCaching)}  (fresh x $${formatRate(inputRate)}/M + cache read x $${formatRate(cacheReadRate)}/M + cache write x $${formatRate(cacheWriteRate)}/M)`
     )
   }
   lines.push(`  ───────────────────────────────────────────────────────────────────`)
   lines.push(
-    `  Cost Savings:        $${modelAwareEfficiency.costSavings.toFixed(4)}  (${modelAwareEfficiency.savingsPercent.toFixed(1)}% reduction)`
+    `  Cost Savings:        $${formatUsd(modelAwareEfficiency.costSavings)}  (${modelAwareEfficiency.savingsPercent.toFixed(1)}% reduction)`
   )
   lines.push(
-    `  Effective Rate:      $${modelAwareEfficiency.effectiveRate.toFixed(2)}/M tokens  (vs. $${modelAwareEfficiency.standardRate.toFixed(2)}/M standard)`
+    `  Effective Rate:      $${formatRate(modelAwareEfficiency.effectiveRate)}/M tokens  (vs. $${formatRate(modelAwareEfficiency.standardRate)}/M standard)`
   )
 
   return lines
@@ -198,7 +201,7 @@ export function formatAvailableSkills(analysis: SkillAnalysis): string[] {
   lines.push(`─────────────────────────────────────────────────────────────────────────`)
   lines.push(``)
   if (hasSystemPromptCatalog) {
-    lines.push(`OpenCode currently includes a verbose skill catalog in the system prompt on every API call.`)
+    lines.push(`OpenCode currently includes a verbose skill catalog in each provider request where skills are available.`)
     lines.push(`The rows below estimate the per-skill XML entries inside that shared catalog.`)
   } else {
     lines.push(`These skills were recovered from the skill tool metadata available to this session.`)
@@ -237,12 +240,12 @@ export function formatAvailableSkills(analysis: SkillAnalysis): string[] {
     )
     if (analysis.skillToolDescriptionTokens > 0) {
       lines.push(
-        `        Compact skill tool description adds ~${formatNumber(analysis.skillToolDescriptionTokens)} tokens more.`
+        `        Static skill tool description adds ~${formatNumber(analysis.skillToolDescriptionTokens)} tokens more.`
       )
     }
   } else if (analysis.skillToolDescriptionTokens > 0) {
     lines.push(
-      `  Note: Full skill tool description is ~${formatNumber(analysis.skillToolDescriptionTokens)} tokens (includes boilerplate).`
+      `  Note: Static skill tool description is ~${formatNumber(analysis.skillToolDescriptionTokens)} tokens.`
     )
   }
 
@@ -283,7 +286,7 @@ export function formatLoadedSkills(analysis: SkillAnalysis): string[] {
     `  Total: ${formatNumber(total)} tokens (${analysis.loadedSkills.length} skill${analysis.loadedSkills.length !== 1 ? "s" : ""} loaded)`
   )
   lines.push(``)
-  lines.push(`  Note: Loaded skill content stays in context (protected from pruning).`)
+  lines.push(`  Note: Skill results are protected from tool-output pruning; full session compaction can still remove older loads from active context.`)
 
   return lines
 }
@@ -297,7 +300,7 @@ export function formatAvailableSubagents(analysis: SkillAnalysis): string[] {
   lines.push(`AVAILABLE SUBAGENTS (in task tool definition)`)
   lines.push(`─────────────────────────────────────────────────────────────────────────`)
   lines.push(``)
-  lines.push(`These subagents are embedded in the task tool description and consume tokens on every API call.`)
+  lines.push(`These subagents are embedded in the task tool description whenever that tool is enabled for a provider request.`)
   lines.push(``)
 
   const nameHeader = "Subagent".padEnd(SUBAGENT_NAME_WIDTH)

@@ -58,6 +58,21 @@ export async function fetchSessionMessages(client: any, sessionID: string, routi
   ])
 }
 
+export async function fetchSession(client: any, sessionID: string, routing: RoutingParams = {}): Promise<any> {
+  const get = client?.session?.get
+  if (typeof get !== "function") {
+    throw new Error("OpenCode session.get API is unavailable")
+  }
+
+  const compactedRouting = compactRouting(routing)
+
+  return firstSuccessful([
+    () => get.call(client.session, { path: { id: sessionID }, ...queryWithRouting(compactedRouting), throwOnError: true }),
+    () => get.call(client.session, { path: { sessionID }, ...queryWithRouting(compactedRouting), throwOnError: true }),
+    () => get.call(client.session, { sessionID, ...compactedRouting }, { throwOnError: true }),
+  ])
+}
+
 export async function fetchSessionChildren(client: any, sessionID: string, routing: RoutingParams = {}): Promise<any> {
   const children = client?.session?.children
   if (typeof children !== "function") {

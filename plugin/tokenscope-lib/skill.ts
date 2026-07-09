@@ -1,7 +1,5 @@
 // SkillAnalyzer - analyzes skill usage and token consumption
 
-import { pathToFileURL } from "url"
-
 import type {
   SessionMessage,
   SkillAnalysis,
@@ -144,13 +142,15 @@ export class SkillAnalyzer {
     let descriptionTokens = 0
 
     try {
+      const skillTool = tools.find((tool) => tool.id === "skill")
+      if (skillTool?.description) {
+        descriptionTokens = await this.tokenizerManager.countTokens(skillTool.description, tokenModel)
+      }
+
       if (availableSkills) {
         const sortedSkills = availableSkills
           .filter((skill): skill is RemoteSkill & { description: string } => typeof skill.description === "string")
           .sort((a, b) => a.name.localeCompare(b.name))
-        const skillToolDescription = this.buildSkillToolDescription(sortedSkills)
-        descriptionTokens = await this.tokenizerManager.countTokens(skillToolDescription, tokenModel)
-
         const systemPromptCatalog = this.buildSkillSystemPrompt(sortedSkills)
         contextTokens = await this.tokenizerManager.countTokens(systemPromptCatalog, tokenModel)
 
@@ -168,7 +168,6 @@ export class SkillAnalyzer {
         return { skills, totalTokens, contextTokens, descriptionTokens }
       }
 
-      const skillTool = tools.find((t) => t.id === "skill")
       if (!skillTool?.description) {
         return { skills, totalTokens, contextTokens, descriptionTokens }
       }
@@ -453,6 +452,7 @@ export class SkillAnalyzer {
         callCount: number
         firstMessageIndex: number
         tokens: number
+        totalTokens: number
         content: string
       }
     >()
@@ -475,17 +475,18 @@ export class SkillAnalyzer {
         const content = (part.state.output ?? "").toString().trim()
         if (!content) continue
 
+        const tokens = await this.tokenizerManager.countTokens(content, tokenModel)
         const existing = skillMap.get(skillName)
         if (existing) {
           existing.callCount++
+          existing.totalTokens += tokens
         } else {
-          const tokens = await this.tokenizerManager.countTokens(content, tokenModel)
-
           skillMap.set(skillName, {
             name: skillName,
             callCount: 1,
             firstMessageIndex: messageIndex,
             tokens,
+            totalTokens: tokens,
             content: content.length > 500 ? content.substring(0, 500) + "..." : content,
           })
         }
@@ -494,16 +495,15 @@ export class SkillAnalyzer {
 
     const skills: LoadedSkill[] = []
     for (const [, skillData] of skillMap) {
-      const totalSkillTokens = skillData.tokens * skillData.callCount
       skills.push({
         name: skillData.name,
         callCount: skillData.callCount,
         firstMessageIndex: skillData.firstMessageIndex,
         tokens: skillData.tokens,
-        totalTokens: totalSkillTokens,
+        totalTokens: skillData.totalTokens,
         content: skillData.content,
       })
-      totalTokens += totalSkillTokens
+      totalTokens += skillData.totalTokens
     }
 
     skills.sort((a, b) => b.totalTokens - a.totalTokens)
@@ -629,7 +629,7 @@ export class SkillAnalyzer {
     ]
 
     if (skill.location) {
-      lines.push(`    <location>${pathToFileURL(skill.location).href}</location>`)
+      lines.push(`    <location>${this.escapeHtml(skill.location)}</location>`)
     }
 
     lines.push("  </skill>")
@@ -648,30 +648,6 @@ export class SkillAnalyzer {
     return ["<available_skills>", ...skills.map((skill) => this.buildVerboseSkillEntry(skill)), "</available_skills>"].join(
       "\n"
     )
-  }
-
-  private buildSkillToolDescription(skills: RemoteSkill[]): string {
-    if (skills.length === 0) {
-      return "Load a specialized skill that provides domain-specific instructions and workflows. No skills are currently available."
-    }
-
-    return [
-      "Load a specialized skill that provides domain-specific instructions and workflows.",
-      "",
-      "When you recognize that a task matches one of the available skills listed below, use this tool to load the full skill instructions.",
-      "",
-      "The skill will inject detailed instructions, workflows, and access to bundled resources (scripts, references, templates) into the conversation context.",
-      "",
-      'Tool output includes a `<skill_content name="...">` block with the loaded content.',
-      "",
-      "The following skills provide specialized sets of instructions for particular tasks",
-      "Invoke this tool to load a skill when a task matches one of the available skills listed below:",
-      "",
-      [
-        "## Available Skills",
-        ...skills.map((skill) => `- **${skill.name}**: ${skill.description}`),
-      ].join("\n"),
-    ].join("\n")
   }
 
   private buildSubagentBullet(agent: RemoteAgent): string {
@@ -699,6 +675,15 @@ export class SkillAnalyzer {
     ].join("\n")
   }
 
+  private escapeHtml(value: string): string {
+    return value
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#39;")
+  }
+
   private async fetchAgents(): Promise<RemoteAgent[] | undefined> {
     try {
       const agents = await this.fetchInternalJson<RemoteAgent[]>("agent")
@@ -718,6 +703,10 @@ export class SkillAnalyzer {
       }
     } catch {}
 
+    this.warnings?.add(
+      "Could not fetch OpenCode agent metadata. Skill and subagent catalog estimates could not be filtered to the active agent's permissions.",
+      "agent-catalog"
+    )
     return undefined
   }
 
@@ -740,6 +729,10 @@ export class SkillAnalyzer {
       }
     } catch {}
 
+    this.warnings?.add(
+      "Could not fetch the OpenCode skill catalog. Available-skill system-prompt estimates were skipped.",
+      "skill-catalog"
+    )
     return undefined
   }
 

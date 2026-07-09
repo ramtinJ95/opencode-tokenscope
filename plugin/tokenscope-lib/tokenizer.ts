@@ -40,11 +40,7 @@ export class TokenizerManager {
 
   private async countWithTiktoken(content: string, model: string): Promise<number> {
     const encoder = await this.loadTiktokenEncoder(model)
-    try {
-      return encoder.encode(content).length
-    } catch {
-      return this.approximateTokenCount(content)
-    }
+    return encoder.encode(content).length
   }
 
   private async countWithHuggingFaceTokenizer(content: string, hub: string): Promise<number> {
@@ -55,9 +51,12 @@ export class TokenizerManager {
 
     try {
       const encoding = await tokenizer.encode(content)
-      return Array.isArray(encoding?.ids) ? encoding.ids.length : this.approximateTokenCount(content)
-    } catch {
-      return this.approximateTokenCount(content)
+      if (!Array.isArray(encoding?.ids)) {
+        throw new Error(`Tokenizer '${hub}' returned no token IDs`)
+      }
+      return encoding.ids.length
+    } catch (error) {
+      throw new Error(`Tokenizer '${hub}' could not encode content: ${formatErrorMessage(error)}`)
     }
   }
 
@@ -71,13 +70,17 @@ export class TokenizerManager {
     const getEncoding = mod.getEncoding ?? mod.default?.getEncoding
 
     if (typeof getEncoding !== "function") {
-      return { encode: (text: string) => ({ length: Math.ceil(text.length / 4) }) }
+      throw new Error("js-tiktoken did not expose getEncoding")
     }
 
     let encoder
     try {
       encoder = typeof encodingForModel === "function" ? encodingForModel(model) : getEncoding(model)
     } catch {
+      this.warnings?.add(
+        `Tiktoken does not recognize model '${model}'. Local content estimates use the cl100k_base encoding instead.`,
+        `tiktoken-model:${model}`
+      )
       encoder = getEncoding("cl100k_base")
     }
 

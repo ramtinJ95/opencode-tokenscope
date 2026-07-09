@@ -45,6 +45,42 @@ test("context breakdown ignores user system overrides as generated OpenCode cont
   expect(breakdown.totalCachedContext).toBe(2_000)
   expect(breakdown.baseSystemPrompt.tokens).toBeGreaterThan(0)
   expect(breakdown.toolDefinitions.toolCount).toBe(1)
+  expect(breakdown.projectTree.tokens).toBe(0)
+})
+
+test("estimated context components never exceed the observed cache write", async () => {
+  const analyzer = new ContextAnalyzer(tokenizer)
+  const exported: ExportedSession = {
+    info: { id: "ses_small", title: "small" },
+    messages: [
+      {
+        info: { id: "msg_assistant", role: "assistant" },
+        parts: [
+          {
+            type: "step-finish",
+            tokens: { input: 0, output: 1, reasoning: 0, cache: { read: 0, write: 100 } },
+          } as any,
+        ],
+      },
+    ],
+  }
+  const breakdown = await (analyzer as any).analyzeContextBreakdown(exported, tokenModel, [
+    {
+      id: "very-large-tool",
+      description: "word ".repeat(1_000),
+      parameters: { type: "object", properties: {} },
+    },
+  ])
+  const componentTotal =
+    breakdown.baseSystemPrompt.tokens +
+    breakdown.toolDefinitions.tokens +
+    breakdown.environmentContext.tokens +
+    breakdown.projectTree.tokens +
+    breakdown.customInstructions.tokens
+
+  expect(breakdown.totalCachedContext).toBe(100)
+  expect(componentTotal).toBe(100)
+  expect(breakdown.projectTree.tokens).toBe(0)
 })
 
 test("context breakdown preserves generated base prompt fragments and merges tool metadata", async () => {
