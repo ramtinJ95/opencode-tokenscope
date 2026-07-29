@@ -180,7 +180,7 @@ The report names the pricing and tokenizer fallback it used, rather than present
 | --- | --- |
 | `"@ramtinj95/opencode-tokenscope"` | Uses an unversioned package spec; cache and update behavior follows the OpenCode runtime. |
 | `"@ramtinj95/opencode-tokenscope@latest"` | Requests npm's current `latest` tag when OpenCode resolves the package. |
-| `"@ramtinj95/opencode-tokenscope@1.8.0"` | Requests the exact 1.8.0 release. |
+| `"@ramtinj95/opencode-tokenscope@1.8.1"` | Requests the exact 1.8.1 release. |
 
 Update a global installation manually:
 

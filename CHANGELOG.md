@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.1] - 2026-07-29
+
+### Added
+
+- Added a generated report preview near the top of the README and a linked report reference covering section semantics, exclusions, fallbacks, and reconstruction limits.
+
+### Changed
+
+- Reorganized the root and packaged READMEs around installation, report interpretation, current capabilities, configuration, pricing and tokenizer coverage, troubleshooting, privacy, and development.
+- Clarified legacy assistant-message telemetry fallback, config loading behavior, private-report write failures, OpenCode and Hugging Face network access, and npm package resolver semantics.
+
 ## [1.8.0] - 2026-07-09
 
 ### Added
@@ -201,7 +212,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Synced READMEs and removed version tags from feature headers
 - Updated install script for better testing before npm push
 
-[Unreleased]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.8.0...HEAD
+[Unreleased]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.8.1...HEAD
+[1.8.1]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.8.0...v1.8.1
 [1.8.0]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.7.2...v1.8.0
 [1.7.2]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.7.1...v1.7.2
 [1.7.1]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.7.0...v1.7.1
