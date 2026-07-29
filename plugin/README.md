@@ -106,9 +106,11 @@ When the private report location is available, missing, empty, or inaccessible s
 
 TokenScope deliberately separates three kinds of numbers:
 
-1. **Recorded usage snapshot** — persisted OpenCode `step-finish` telemetry. This is the strongest available source for fresh input, cache read/write, visible output, reasoning, completed provider steps, and OpenCode-recorded cost.
+1. **Recorded usage snapshot** — persisted OpenCode `step-finish` telemetry, with an assistant-message aggregate fallback for older data. This is the strongest available source for fresh input, cache read/write, visible output, reasoning, recovered calls/steps, and OpenCode-recorded cost.
 2. **Local content inventory** — tokenizer estimates over retained text and replayable tool output. These help identify contributors but are not billable usage or an exact reconstruction of the next provider request.
 3. **Explanatory estimates** — public API-rate cost, cache savings, cached-context attribution, tool schemas, and skill/subagent catalogs. These are labeled as estimates and kept out of recorded totals.
+
+See the [report reference](https://github.com/ramtinJ95/opencode-tokenscope/blob/main/docs/report-reference.md) for a section-by-section explanation of the calculations, exclusions, and reconstruction limits.
 
 ### Snapshot Boundary
 
