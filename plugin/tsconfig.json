@@ -19,6 +19,7 @@
   },
   "include": [
     "tokenscope.ts",
+    "tokenscope-v2.ts",
     "tokenscope-lib/**/*"
   ],
   "exclude": [

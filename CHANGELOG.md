@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-09-21
+
+### Added
+
+- Added OpenCode v2 plugin support. The package now default-exports an `id` + `setup` definition and registers `tokenscope` through `ctx.tool.transform`, while continuing to expose the v1 `server` entrypoint for OpenCode 1.18.29 and newer.
+- Added a v2 plugin-context adapter that converts v2 session messages (`{ type, content[] }`, with tool results in `state.content[]`) into the v1 `{ info, parts[] }` shape and maps `session.context`, `session.get`, `session.list`, `model.list`, `agent.list`, `skill.list`, and `tool.list` onto the normalized client surface.
+- Added v2 pricing discovery from the live model catalog so recorded and estimated costs use OpenCode metadata when available.
+- Added coverage for the v2 message conversion, catalog mapping, combined entrypoint shape, and an end-to-end v2 tool execution.
+
+### Changed
+
+- Report files now fall back to a private user-owned directory when the preferred temporary location is missing or writable by other users, so a shared `$TMPDIR/opencode` no longer fails the analysis.
+- Skill and agent catalog fetches tolerate a missing v1 server URL and use the plugin-context catalogs instead.
+- Changed the default export to a combined plugin object. OpenCode v1 (1.18.29+) and OpenCode v2 load it directly; OpenCode v1 older than 1.18.29 should pin the 1.x line.
+
 ## [1.8.1] - 2026-07-29
 
 ### Added

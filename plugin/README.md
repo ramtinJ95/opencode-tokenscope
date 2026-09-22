@@ -18,6 +18,17 @@ TokenScope turns the telemetry OpenCode has persisted for a session into a reada
 
 2. **Add the plugin to `opencode.json`** (in your project root or at `~/.config/opencode/opencode.json` for global use):
 
+   OpenCode v2 uses `plugins`:
+
+   ```json
+   {
+     "$schema": "https://opencode.ai/config.json",
+     "plugins": ["@ramtinj95/opencode-tokenscope"]
+   }
+   ```
+
+   OpenCode v1 (1.18.29 and newer) uses `plugin`:
+
    ```json
    {
      "$schema": "https://opencode.ai/config.json",
@@ -47,9 +58,11 @@ To ask OpenCode's package resolver for the latest npm release, use `@latest`:
 
 ```json
 {
-  "plugin": ["@ramtinj95/opencode-tokenscope@latest"]
+  "plugins": ["@ramtinj95/opencode-tokenscope@latest"]
 }
 ```
+
+TokenScope 2.x supports both plugin APIs from one package: OpenCode v2 loads the `id`/`setup` definition, and OpenCode v1 (1.18.29 and newer) calls the `server` entrypoint. On OpenCode v1 older than 1.18.29, pin the 1.x line, for example `@ramtinj95/opencode-tokenscope@1.8.1`.
 
 ### Option 2: Install Script
 
@@ -76,7 +89,7 @@ A report brings the session's main signals together:
 
 ## Compatibility
 
-TokenScope supports `@opencode-ai/plugin >=1.1.48`. The accuracy contracts in this release were verified against OpenCode v1.17.18; older runtimes can differ in explanatory skill or tool formatting even when core telemetry remains available.
+TokenScope 2.x targets both plugin APIs. OpenCode v2 plugins use the `@opencode/plugin` definition API (`id` + `setup`); OpenCode v1 plugins use `@opencode-ai/plugin` (`server`). The accuracy contracts in this release were verified against OpenCode v1.17.18 and v2.0.12. Older runtimes can differ in explanatory skill or tool formatting even when core telemetry remains available.
 
 TokenScope is an OpenCode plugin and tool, not a standalone CLI or transcript-file analyzer. The runtime report path is cross-platform; the one-line install script is intended for Unix-like environments with Bash.
 
@@ -98,7 +111,7 @@ The slash command is a small prompt file that invokes the plugin's `tokenscope` 
 | `limitMessages` | `3` | Entries shown per category; integer from 1 to 10. |
 | `includeSubagents` | `true` | Recursively include child-session usage and cost. |
 
-Each invocation writes a unique report to a private directory under the operating system's temporary directory and returns its exact path. Reports are not written into the analyzed worktree, and concurrent invocations cannot overwrite one another. The OS owns eventual cleanup.
+Each invocation writes a unique report to a private, owner-only directory and returns its exact path. The preferred location is the operating system's temporary directory; when that location is missing or writable by other users, TokenScope falls back to a user-owned directory instead of failing. Reports are not written into the analyzed worktree, and concurrent invocations cannot overwrite one another. The OS owns eventual cleanup.
 
 When the private report location is available, missing, empty, or inaccessible sessions produce a short report explaining the failure instead of polluting the project or silently returning partial output. If the location cannot be created or written, the tool returns an explicit inline error.
 
