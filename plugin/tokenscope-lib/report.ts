@@ -18,27 +18,62 @@ export function buildReportFilename(sessionID?: string, invocationID?: string, n
   return `token-usage-output-${session}-${invocation}-${unique}.txt`
 }
 
+async function ensurePrivateRoot(candidate: string): Promise<string | null> {
+  try {
+    await fs.mkdir(candidate, { recursive: true, mode: 0o700 })
+    const stat = await fs.lstat(candidate)
+    if (!stat.isDirectory() || stat.isSymbolicLink()) {
+      return null
+    }
+    if (process.platform !== "win32") {
+      if (typeof process.getuid === "function" && stat.uid !== process.getuid()) {
+        return null
+      }
+      if ((stat.mode & 0o022) !== 0) {
+        return null
+      }
+    }
+    return candidate
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Candidate private report roots, in preference order.
+ *
+ * The first entry matches OpenCode v1's own temp directory. Some OpenCode
+ * installations create `$TMPDIR/opencode` with group/other write access, which
+ * is unsafe for session text, so we fall back to a user-owned directory rather
+ * than failing the analysis.
+ */
+function reportRootCandidates(): string[] {
+  const uid = typeof process.getuid === "function" ? process.getuid() : undefined
+  const suffix = uid === undefined ? "" : `-${uid}`
+  return [
+    path.join(os.tmpdir(), "opencode"),
+    path.join(os.tmpdir(), `opencode-tokenscope${suffix}`),
+    path.join(os.homedir(), ".cache", "opencode-tokenscope", "tmp"),
+  ]
+}
+
 export async function createReportPath(
   sessionID?: string,
   invocationID?: string,
   nonce = randomUUID()
 ): Promise<string> {
-  const openCodeTemp = path.join(os.tmpdir(), "opencode")
-  await fs.mkdir(openCodeTemp, { recursive: true, mode: 0o700 })
-  const rootStat = await fs.lstat(openCodeTemp)
-  if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) {
-    throw new Error(`OpenCode temporary path is not a real directory: ${openCodeTemp}`)
-  }
-  if (process.platform !== "win32") {
-    if (typeof process.getuid === "function" && rootStat.uid !== process.getuid()) {
-      throw new Error(`OpenCode temporary path is not owned by the current user: ${openCodeTemp}`)
-    }
-    if ((rootStat.mode & 0o022) !== 0) {
-      throw new Error(`OpenCode temporary path is writable by another user: ${openCodeTemp}`)
-    }
+  let root: string | null = null
+
+  for (const candidate of reportRootCandidates()) {
+    root = await ensurePrivateRoot(candidate)
+    if (root) break
   }
 
-  const directory = await fs.mkdtemp(path.join(openCodeTemp, "tokenscope-"))
+  if (!root) {
+    throw new Error("Could not find a writable private directory for the TokenScope report")
+  }
+
+  const directory = await fs.mkdtemp(path.join(root, "tokenscope-"))
   return path.join(directory, buildReportFilename(sessionID, invocationID, nonce))
 }
 

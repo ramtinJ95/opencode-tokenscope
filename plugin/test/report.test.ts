@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test"
 
 import fs from "node:fs/promises"
-import os from "node:os"
 import path from "node:path"
 
 import { buildReportFilename, buildSuccessSummary, createReportPath, writeReport } from "../tokenscope-lib/report.js"
@@ -17,13 +16,15 @@ test("createReportPath uses a private temporary directory and private file", asy
   const reportDirectory = path.dirname(reportPath)
 
   try {
-    expect(reportDirectory.startsWith(path.join(os.tmpdir(), "opencode", "tokenscope-"))).toBe(true)
+    expect(path.basename(reportDirectory).startsWith("tokenscope-")).toBe(true)
     expect(path.basename(reportPath)).toBe("token-usage-output-ses_test-msg_test-nonce.txt")
     expect(await writeReport(reportPath, "private report")).toBeNull()
     expect(await fs.readFile(reportPath, "utf8")).toBe("private report")
     if (process.platform !== "win32") {
       expect((await fs.stat(reportDirectory)).mode & 0o777).toBe(0o700)
       expect((await fs.stat(reportPath)).mode & 0o777).toBe(0o600)
+      // The containing report root must not be writable by other users.
+      expect((await fs.stat(path.dirname(reportDirectory))).mode & 0o022).toBe(0)
     }
   } finally {
     await fs.rm(reportDirectory, { recursive: true, force: true })

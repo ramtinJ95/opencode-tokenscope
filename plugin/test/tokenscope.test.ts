@@ -59,7 +59,7 @@ async function runTokenscope(options: RunOptions = {}) {
 
     const reportPath = summary.match(/saved to: (.+)/)?.[1]
     expect(reportPath).toBeDefined()
-    expect(path.dirname(reportPath!).startsWith(path.join(os.tmpdir(), "opencode", "tokenscope-"))).toBe(true)
+    expect(path.basename(path.dirname(reportPath!)).startsWith("tokenscope-")).toBe(true)
     expect((await fs.readdir(directory)).filter((filename) => filename.startsWith("token-usage-output-"))).toHaveLength(0)
     const report = await fs.readFile(reportPath!, "utf8")
     await fs.rm(path.dirname(reportPath!), { recursive: true, force: true })

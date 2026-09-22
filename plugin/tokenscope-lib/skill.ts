@@ -48,7 +48,7 @@ export class SkillAnalyzer {
   constructor(
     private client: any,
     private tokenizerManager: TokenizerManager,
-    private serverUrl: URL,
+    private serverUrl: URL | undefined,
     private directory: string,
     private warnings?: WarningCollector
   ) {}
@@ -737,6 +737,10 @@ export class SkillAnalyzer {
   }
 
   private async fetchInternalJson<T>(pathname: string): Promise<T> {
+    if (!this.serverUrl) {
+      throw new Error("No OpenCode server URL is available for catalog fetches")
+    }
+
     const base = new URL(this.serverUrl)
     if (!base.pathname.endsWith("/")) {
       base.pathname += "/"
