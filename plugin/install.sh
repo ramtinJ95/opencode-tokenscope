@@ -51,6 +51,58 @@ cleanup() {
 
 trap cleanup EXIT
 
+# OpenCode V2 installs plugins through its own CLI and the plugin registers the
+# /tokenscope command itself. The copy-into-config-directory flow further down
+# is for OpenCode V1 only.
+PACKAGE="@ramtinj95/opencode-tokenscope"
+OPENCODE_MAJOR=""
+if command -v opencode >/dev/null 2>&1; then
+    OPENCODE_MAJOR=$(opencode --version 2>/dev/null | head -n 1 | grep -oE '[0-9]+' | head -n 1 || true)
+fi
+
+if [ -n "$OPENCODE_MAJOR" ] && [ "$OPENCODE_MAJOR" -ge 2 ]; then
+    if [ "$UPDATE_MODE" = true ]; then
+        echo_info "OpenCode V2 detected. Updating $PACKAGE..."
+        opencode plugin update "$PACKAGE"
+    else
+        echo_info "OpenCode V2 detected. Installing $PACKAGE..."
+        opencode plugin add "$PACKAGE"
+    fi
+
+    # Files from the V1 script install. OpenCode V2 still scans these directories,
+    # where the copied sources fail to load and the old command file duplicates /tokenscope.
+    LEGACY_PATHS=(
+        "$OPENCODE_DIR/plugin/tokenscope.ts"
+        "$OPENCODE_DIR/plugin/tokenscope-lib"
+        "$OPENCODE_DIR/plugin/dist/tokenscope.js"
+        "$OPENCODE_DIR/plugin/dist/tokenscope-lib"
+        "$OPENCODE_DIR/plugin/models.json"
+        "$OPENCODE_DIR/plugin/tokenscope-config.json"
+        "$OPENCODE_DIR/plugin/install.sh"
+        "$OPENCODE_DIR/command/tokenscope.md"
+    )
+    legacy_found=()
+    for legacy_path in "${LEGACY_PATHS[@]}"; do
+        if [ -e "$legacy_path" ]; then
+            legacy_found+=("$legacy_path")
+        fi
+    done
+    if [ "${#legacy_found[@]}" -gt 0 ]; then
+        echo ""
+        echo_warn "Found files from an OpenCode V1 script install. Remove them; OpenCode V2 does not use them:"
+        for legacy_path in "${legacy_found[@]}"; do
+            echo "    $legacy_path"
+        done
+        echo_warn "That install also ran 'npm install' in $OPENCODE_DIR/plugin. If nothing else uses"
+        echo_warn "that directory, remove its package.json, tsconfig.json and node_modules too."
+    fi
+
+    echo ""
+    echo_info "Done. Restart OpenCode and run /tokenscope in any session."
+    echo_info "Documentation: $REPO_URL"
+    exit 0
+fi
+
 echo ""
 echo "╔════════════════════════════════════════════════════════════╗"
 if [ "$UPDATE_MODE" = true ]; then
