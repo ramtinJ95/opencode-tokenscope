@@ -23,6 +23,27 @@ test("package.json routes OpenCode V1 to main and OpenCode V2 to exports", async
   expect(pkg.exports["."].import).toBe("./dist/v2/tokenscope.js")
 })
 
+// OpenCode's runtime JSX transform skips files under node_modules, so the published TUI part must
+// be the compiled file, and the V1 script installer's `npm run build` must not depend on it.
+test("package.json ships the TUI part compiled, outside the V1 build", async () => {
+  const pkg = JSON.parse(await fs.readFile(path.join(pluginRoot, "package.json"), "utf8"))
+
+  expect(pkg.exports["./tui"]).toBe("./dist/v2/tui.js")
+  expect(pkg.files.filter((file: string) => /\.tsx?$/.test(file))).toEqual([])
+  expect(pkg.scripts.build).toBe("npm run clean && tsc")
+  expect(pkg.scripts.prepublishOnly).toContain("build:tui")
+})
+
+// The V1 script installer runs `npm install` on this package.json without a lockfile. Each
+// @opencode/plugin release requires the @opencode/theme of exactly its own version, so a floating
+// SDK next to a pinned theme stops resolving as soon as OpenCode publishes a release.
+test("the OpenCode V2 SDK and theme dev dependencies are pinned to the same version", async () => {
+  const pkg = JSON.parse(await fs.readFile(path.join(pluginRoot, "package.json"), "utf8"))
+
+  expect(pkg.devDependencies["@opencode/plugin"]).toMatch(/^\d+\.\d+\.\d+$/)
+  expect(pkg.devDependencies["@opencode/theme"]).toBe(pkg.devDependencies["@opencode/plugin"])
+})
+
 test("the V1 module only exports plugin functions", () => {
   // Legacy V1 loaders call every export of the module as a plugin function.
   expect(Object.values(v1).every((value) => typeof value === "function")).toBe(true)
