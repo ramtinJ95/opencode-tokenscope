@@ -10289,6 +10289,12 @@
     "cacheWrite": 0,
     "cacheRead": 0
   },
+  "gpt-6.1-terra": {
+    "input": 1,
+    "output": 5,
+    "cacheWrite": 1.25,
+    "cacheRead": 0.05
+  },
   "gpt-audio": {
     "input": 2.5,
     "output": 10,
@@ -22852,6 +22858,12 @@
     "output": 180,
     "cacheWrite": 0,
     "cacheRead": 0
+  },
+  "openai/gpt-6.1-terra": {
+    "input": 1,
+    "output": 5,
+    "cacheWrite": 1.25,
+    "cacheRead": 0.05
   },
   "openai/o1": {
     "input": 15,
