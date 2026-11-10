@@ -3,7 +3,7 @@
 // The plugin SDK is imported for types only, so this module loads without the SDK installed.
 import type { Plugin } from "@opencode/plugin"
 
-import type { ModelPricing, TokenscopeConfig } from "./tokenscope-lib/types.js"
+import type { ModelPricing, TokenAnalysis, TokenscopeConfig } from "./tokenscope-lib/types.js"
 import { DEFAULT_ENTRY_LIMIT, loadModelPricing, loadTokenscopeConfig } from "./tokenscope-lib/config.js"
 import { TokenizerManager } from "./tokenscope-lib/tokenizer.js"
 import { ModelResolver, ContentCollector, TokenAnalysisEngine } from "./tokenscope-lib/analyzer.js"
@@ -22,6 +22,8 @@ import {
 import { ModelMetadataResolver } from "./tokenscope-lib/metadata.js"
 import { WarningCollector, formatErrorMessage } from "./tokenscope-lib/warnings.js"
 import { buildFailureReport, buildSuccessSummary, createReportPath, writeReport } from "./tokenscope-lib/report.js"
+import { TokenscopeRpc } from "./tokenscope-lib/rpc.js"
+import { buildReportView } from "./tokenscope-lib/view.js"
 import {
   addModelSupportWarnings,
   addPerModelPricingWarnings,
@@ -31,7 +33,10 @@ import {
 
 const PLUGIN_ID = "tokenscope"
 const TOOL_NAME = "tokenscope"
-const COMMAND_NAME = "tokenscope"
+// The TUI part owns /tokenscope and opens a native panel (see tui.tsx). This server command is the
+// model-driven path, for clients without a TokenScope UI part and for putting a report into the
+// session. Two commands with one name would both be listed, and this one would win on Enter.
+const COMMAND_NAME = "tokenscope-report"
 
 const TOOL_DESCRIPTION =
   "Analyze token usage across the current session with detailed breakdowns by category (system, user, assistant, tools, reasoning). " +
@@ -58,7 +63,7 @@ const TOOL_INPUT = {
   additionalProperties: false,
 }
 
-const COMMAND_DESCRIPTION = "Analyze token usage across the current session with detailed breakdowns by category"
+const COMMAND_DESCRIPTION = "Have the model write a full token usage report into this session"
 
 const COMMAND_PROMPT = [
   `Call the ${TOOL_NAME} tool directly without delegating to other agents.`,
@@ -91,12 +96,82 @@ function readArgs(input: unknown): TokenscopeArgs {
   }
 }
 
+interface SessionAnalysis {
+  analysis: TokenAnalysis
+  costCalculator: CostCalculator
+}
+
+/**
+ * Analyzes one session. Returns undefined when the session has no messages yet, and throws when
+ * the analysis cannot be completed; each caller decides how to present those outcomes.
+ */
+async function analyzeSession(
+  runtime: TokenscopeRuntime,
+  args: TokenscopeArgs,
+  sessionID: string,
+  warnings: WarningCollector
+): Promise<SessionAnalysis | undefined> {
+  const { ctx, snapshots, pricingData, config } = runtime
+
+  const session = await ctx.session.get({ sessionID })
+  const rawMessages = await ctx.session.context({ sessionID })
+  const messages = normalizeMessages(rawMessages)
+  if (messages.length === 0) return undefined
+
+  if (runtime.captureFailure.message) {
+    warnings.add(
+      `TokenScope could not capture a model request, so measured context may be missing: ${runtime.captureFailure.message}`,
+      "request-capture"
+    )
+  }
+
+  const snapshot = snapshots.get(sessionID)
+  const tokenizerManager = new TokenizerManager(warnings)
+  const analysisEngine = new TokenAnalysisEngine(tokenizerManager, new ContentCollector())
+  const { model: tokenModel, providerID, modelID } = new ModelResolver().resolveModelAndProvider(messages)
+  const metadataResolver = new ModelMetadataResolver(ctx.model, warnings)
+  const costCalculator = new CostCalculator(await metadataResolver.mergePricingData(pricingData))
+  const pricingModelName = costCalculator.buildLookupKey(providerID, modelID) || tokenModel.name
+
+  addModelSupportWarnings(warnings, costCalculator, tokenModel, providerID, modelID, pricingModelName)
+
+  const analysis = await analysisEngine.analyze(
+    sessionID,
+    messages,
+    tokenModel,
+    args.limitMessages ?? DEFAULT_ENTRY_LIMIT,
+    snapshot
+  )
+  analysis.pricingModelName = pricingModelName
+
+  addSessionAggregateWarnings(warnings, analysis, session, { compacted: hasCompactedHistory(rawMessages) })
+  addPerModelPricingWarnings(warnings, costCalculator, analysis, pricingModelName)
+  await attachConfiguredAnalyses({
+    analysis,
+    messages,
+    sessionID,
+    snapshot,
+    sessionPermissions: session.permissions,
+    tokenModel,
+    pricingModelName,
+    includeSubagents: args.includeSubagents,
+    config,
+    costCalculator,
+    subagentAnalyzer: new SubagentAnalyzer(ctx.session, costCalculator, warnings),
+    contextAnalyzer: new ContextAnalyzer(tokenizerManager, warnings),
+    skillAnalyzer: new SkillAnalyzer(ctx, tokenizerManager, warnings),
+  })
+
+  analysis.warnings = warnings.list()
+  return { analysis, costCalculator }
+}
+
+// The tool path: writes the text report to a file the model can read back.
 async function runTokenscope(
   runtime: TokenscopeRuntime,
   args: TokenscopeArgs,
   invocation: { sessionID: string; messageID: string }
 ): Promise<string> {
-  const { ctx, snapshots, pricingData, config } = runtime
   const sessionID = args.sessionID ?? invocation.sessionID
   const warnings = new WarningCollector()
 
@@ -110,11 +185,9 @@ async function runTokenscope(
   }
 
   try {
-    const session = await ctx.session.get({ sessionID })
-    const rawMessages = await ctx.session.context({ sessionID })
-    const messages = normalizeMessages(rawMessages)
+    const result = await analyzeSession(runtime, args, sessionID, warnings)
 
-    if (messages.length === 0) {
+    if (!result) {
       const output = buildFailureReport(sessionID, warnings.list(), `Session ${sessionID} has no messages yet.`)
       const writeError = await writeReport(outputPath, output)
       if (writeError) {
@@ -123,60 +196,15 @@ async function runTokenscope(
       return `Session ${sessionID} has no messages yet. A short report was saved to: ${outputPath}`
     }
 
-    if (runtime.captureFailure.message) {
-      warnings.add(
-        `TokenScope could not capture a model request, so measured context may be missing: ${runtime.captureFailure.message}`,
-        "request-capture"
-      )
-    }
+    const formatter = new OutputFormatter(result.costCalculator)
+    formatter.setConfig(runtime.config)
 
-    const snapshot = snapshots.get(sessionID)
-    const tokenizerManager = new TokenizerManager(warnings)
-    const analysisEngine = new TokenAnalysisEngine(tokenizerManager, new ContentCollector())
-    const { model: tokenModel, providerID, modelID } = new ModelResolver().resolveModelAndProvider(messages)
-    const metadataResolver = new ModelMetadataResolver(ctx.model, warnings)
-    const costCalculator = new CostCalculator(await metadataResolver.mergePricingData(pricingData))
-    const formatter = new OutputFormatter(costCalculator)
-    formatter.setConfig(config)
-    const pricingModelName = costCalculator.buildLookupKey(providerID, modelID) || tokenModel.name
-
-    addModelSupportWarnings(warnings, costCalculator, tokenModel, providerID, modelID, pricingModelName)
-
-    const analysis = await analysisEngine.analyze(
-      sessionID,
-      messages,
-      tokenModel,
-      args.limitMessages ?? DEFAULT_ENTRY_LIMIT,
-      snapshot
-    )
-    analysis.pricingModelName = pricingModelName
-
-    addSessionAggregateWarnings(warnings, analysis, session, { compacted: hasCompactedHistory(rawMessages) })
-    addPerModelPricingWarnings(warnings, costCalculator, analysis, pricingModelName)
-    await attachConfiguredAnalyses({
-      analysis,
-      messages,
-      sessionID,
-      snapshot,
-      sessionPermissions: session.permissions,
-      tokenModel,
-      pricingModelName,
-      includeSubagents: args.includeSubagents,
-      config,
-      costCalculator,
-      subagentAnalyzer: new SubagentAnalyzer(ctx.session, costCalculator, warnings),
-      contextAnalyzer: new ContextAnalyzer(tokenizerManager, warnings),
-      skillAnalyzer: new SkillAnalyzer(ctx, tokenizerManager, warnings),
-    })
-
-    analysis.warnings = warnings.list()
-
-    const writeError = await writeReport(outputPath, formatter.format(analysis))
+    const writeError = await writeReport(outputPath, formatter.format(result.analysis))
     if (writeError) {
       return writeError
     }
 
-    return buildSuccessSummary(outputPath, analysis)
+    return buildSuccessSummary(outputPath, result.analysis)
   } catch (error) {
     const fatalMessage = formatErrorMessage(error)
     warnings.add(`TokenScope returned a fallback report instead of failing the tool call: ${fatalMessage}`, `fatal:${sessionID}`)
@@ -223,6 +251,24 @@ const plugin: Plugin.Plugin = {
           content: await runTokenscope(runtime, readArgs(input), context),
         }),
       })
+    })
+
+    // The UI path: UI parts fetch the structured report and render it natively, with no model call.
+    await ctx.rpc.register(TokenscopeRpc, {
+      report: async (input, context) => {
+        const args = readArgs(input)
+        if (!args.sessionID) return context.error("analysis_failed", "A sessionID is required.", {})
+
+        try {
+          const result = await analyzeSession(runtime, args, args.sessionID, new WarningCollector())
+          if (!result) return context.error("empty_session", `Session ${args.sessionID} has no messages yet.`, {})
+
+          const cost = result.costCalculator.calculateCost(result.analysis)
+          return buildReportView(result.analysis, cost, runtime.config) as unknown as Record<string, unknown>
+        } catch (error) {
+          return context.error("analysis_failed", formatErrorMessage(error), {})
+        }
+      },
     })
 
     await ctx.command.transform((editor) => {

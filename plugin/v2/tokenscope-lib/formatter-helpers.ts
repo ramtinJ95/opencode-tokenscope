@@ -89,6 +89,21 @@ export function collectTopEntries(analysis: TokenAnalysis, limit: number): Categ
   return pool.slice(0, limit)
 }
 
+// Per-tool output tokens and call counts, largest output first.
+export function collectToolUsage(analysis: TokenAnalysis): Array<{ label: string; tokens: number; calls: number }> {
+  const toolStats = new Map<string, { tokens: number; calls: number }>()
+  for (const [toolName, calls] of analysis.toolCallCounts.entries()) {
+    toolStats.set(toolName, { tokens: 0, calls })
+  }
+  for (const entry of analysis.categories.tools.allEntries) {
+    const existing = toolStats.get(entry.label) || { tokens: 0, calls: 0 }
+    toolStats.set(entry.label, { ...existing, tokens: entry.tokens })
+  }
+  return Array.from(toolStats.entries())
+    .map(([label, stats]) => ({ label, tokens: stats.tokens, calls: stats.calls }))
+    .sort((a, b) => b.tokens - a.tokens)
+}
+
 export function calculateModelAwareCacheEfficiency(efficiency: CacheEfficiency, cost: { perModelCosts: Array<{
   inputTokens: number
   cacheReadTokens: number

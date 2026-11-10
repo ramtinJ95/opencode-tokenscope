@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
   "name": "@ramtinj95/opencode-tokenscope",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "OpenCode plugin for detailed token usage analysis with breakdowns by category, visual charts, and subagent cost tracking",
   "type": "module",
   "main": "./dist/tokenscope.js",
@@ -10,15 +10,17 @@
     ".": {
       "types": "./dist/v2/tokenscope.d.ts",
       "import": "./dist/v2/tokenscope.js"
-    }
+    },
+    "./tui": "./dist/v2/tui.js"
   },
   "scripts": {
     "clean": "rm -rf dist",
     "build": "npm run clean && tsc",
+    "build:tui": "bun scripts/build-tui.ts",
     "test": "bun test && npm run test:dist",
-    "test:dist": "npm run build && node -e \"await import('./dist/tokenscope.js'); await import('./dist/v2/tokenscope.js')\"",
-    "prepublishOnly": "npm run build",
-    "typecheck": "tsc --noEmit"
+    "test:dist": "npm run build && npm run build:tui && node -e \"await import('./dist/tokenscope.js'); await import('./dist/v2/tokenscope.js')\"",
+    "prepublishOnly": "npm run build && npm run build:tui",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.tui.json"
   },
   "keywords": [
     "opencode",
@@ -54,9 +56,13 @@
   },
   "devDependencies": {
     "@opencode-ai/plugin": "^1.15.13",
-    "@opencode/plugin": "^2.2.6",
+    "@opencode/plugin": "2.2.6",
+    "@opencode/theme": "2.2.6",
+    "@opentui/core": "0.8.1",
+    "@opentui/solid": "0.8.1",
     "@types/bun": "^1.2.0",
     "@types/node": "^22.0.0",
+    "solid-js": "1.9.17",
     "typescript": "^5.7.0"
   },
   "files": [

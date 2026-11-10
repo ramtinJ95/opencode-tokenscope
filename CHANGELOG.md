@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-11-10
+
+Adds a native token usage panel on OpenCode V2. OpenCode V1 is unaffected.
+
+### Added
+
+- On OpenCode V2, `/tokenscope` opens a token usage panel beside the session. The panel reads the analysis from the plugin over RPC, so it makes no model request and adds nothing to the session, and it reloads when the session finishes a turn. It is also in the command palette as "Token usage report".
+- The panel's context window split is scaled to the context OpenCode recorded for the last request, so its rows add up to the provider's count. Local tokenization only supplies the proportions.
+- Added bundled pricing for `gpt-6.1-terra` from models.dev.
+
+### Changed
+
+- On OpenCode V2, the command that has the model print the text report is now `/tokenscope-report`. `/tokenscope` on OpenCode V1 is unchanged.
+
 ## [2.0.0] - 2026-11-10
 
 Adds OpenCode V2 support. OpenCode V1 keeps working without any change on the user's side: the V1 implementation is unchanged from 1.8.1 and stays in the package for a transition period.
@@ -232,7 +246,9 @@ Adds OpenCode V2 support. OpenCode V1 keeps working without any change on the us
 - Synced READMEs and removed version tags from feature headers
 - Updated install script for better testing before npm push
 
-[Unreleased]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.8.1...HEAD
+[Unreleased]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v2.1.0...HEAD
+[2.1.0]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v2.0.0...v2.1.0
+[2.0.0]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.8.1...v2.0.0
 [1.8.1]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.8.0...v1.8.1
 [1.8.0]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.7.2...v1.8.0
 [1.7.2]: https://github.com/ramtinJ95/opencode-tokenscope/compare/v1.7.1...v1.7.2

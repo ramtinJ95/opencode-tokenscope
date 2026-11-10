@@ -15,6 +15,7 @@ import { CostCalculator } from "./cost.js"
 import { formatCostEstimateLines, formatDetailedSubagentBreakdownLines } from "./formatter-cost-sections.js"
 import {
   collectTopEntries,
+  collectToolUsage,
   formatCategoryBar,
   formatNumber,
   formatUsd,
@@ -54,17 +55,7 @@ export class OutputFormatter {
       entry.label.toLowerCase().includes("inferred")
     )
 
-    const toolStats = new Map<string, { tokens: number; calls: number }>()
-    for (const [toolName, calls] of analysis.toolCallCounts.entries()) {
-      toolStats.set(toolName, { tokens: 0, calls })
-    }
-    for (const entry of analysis.categories.tools.allEntries) {
-      const existing = toolStats.get(entry.label) || { tokens: 0, calls: 0 }
-      toolStats.set(entry.label, { ...existing, tokens: entry.tokens })
-    }
-    const toolEntries = Array.from(toolStats.entries())
-      .map(([label, stats]) => ({ label, tokens: stats.tokens, calls: stats.calls }))
-      .sort((a, b) => b.tokens - a.tokens)
+    const toolEntries = collectToolUsage(analysis)
 
     const costEstimate = this.costCalculator.calculateCost(analysis)
 
