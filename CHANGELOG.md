@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-11-10
+
+Adds OpenCode V2 support. OpenCode V1 keeps working without any change on the user's side: the V1 implementation is unchanged from 1.8.1 and stays in the package for a transition period.
+
+### Added
+
+- Added OpenCode V2 support through the V2 plugin API (`@opencode/plugin`). The V2 implementation lives in `plugin/v2/`, produces the same report layers as 1.8.x, and registers both the `tokenscope` tool (as a directly callable tool) and the `/tokenscope` command, so V2 needs no command file.
+- Added package routing for both OpenCode majors: `main` still points at the V1 module, which every OpenCode V1 release and a V1 script install load, and the new `exports` entry points at the V2 module, which OpenCode V2 resolves. Neither host loads the other's implementation or plugin SDK.
+- On V2, the system category, context breakdown, and tool-definition sizes are measured from the system prompt and tool definitions of the session's latest model request, captured with a session `context` hook and split by instruction source. Labeled estimates remain as the fallback for sessions with no request since OpenCode started.
+- On V2, the context breakdown has a "Catalogs & Guidance" row for the skill, MCP, reference, and Code Mode catalogs.
+- On V2, recorded usage is read from assistant messages and compaction requests, and reconciled against the session aggregate. Because V2 exposes only the active context (the last compaction onward) to plugins, a compacted session gets a warning that names both totals instead of a generic mismatch.
+- On V2, live pricing with all context tiers comes from the model catalog, child sessions from the session list, and the skill and subagent catalogs from the skill and agent APIs, filtered with the permission rules of the current agent and session.
+- On V2, feature flags can be set as plugin `options` in `opencode.json(c)`; they take precedence over `~/.config/opencode/tokenscope-config.json`.
+- On V2, user-invoked skills and `!shell` commands are counted alongside replayable tool output.
+- `install.sh` detects OpenCode V2 and installs through `opencode plugin add` (or `opencode plugin update` with `--update`), then lists leftover files from a V1 script install. The V1 flow is unchanged.
+
+### Changed
+
+- `@opencode/plugin ^2.0.0` is an optional peer dependency. `@opencode-ai/plugin >=1.1.48` remains a peer dependency for OpenCode V1.
+
 ## [1.8.1] - 2026-07-29
 
 ### Added
