@@ -29,12 +29,17 @@ export interface ReportView {
   tokenizer: "tiktoken" | "huggingface" | "approx"
   warnings: string[]
 
-  // Locally tokenized retained content: an estimate, not billable usage.
+  // What fills the context window, by source. The provider reports one count per request, so the
+  // split comes from local tokenization. When `scale` is set, the rows were multiplied by it so
+  // they add up to the context OpenCode recorded for the last request, and `tools`,
+  // `topContributors` and `context` are scaled the same way. Without it, every one of them is an
+  // unscaled local estimate.
   content: {
-    input: ReportRow[]
-    output: ReportRow[]
+    rows: ReportRow[]
     total: number
+    scale?: number
   }
+  // Tool output by tool; adds up to the "Tool output" row.
   tools: Array<{ name: string; tokens: number; calls: number }>
   topContributors: ReportRow[]
 

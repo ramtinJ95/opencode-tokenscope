@@ -207,6 +207,18 @@ function TokenscopePanel(props: { context: Plugin.Context; panel: PanelInput }) 
           </Section>
         </Show>
 
+        <Section
+          title="Context window"
+          note={
+            data().content.scale === undefined
+              ? "local estimate"
+              : `recorded total, local split scaled ×${data().content.scale!.toFixed(2)}`
+          }
+        >
+          <Bars rows={data().content.rows} total={data().content.total} />
+          <Line label="Total" value={`${tokens(data().content.total)} tokens`} strong />
+        </Section>
+
         <Show when={data().context}>
           {(context) => (
             <Section
@@ -218,12 +230,6 @@ function TokenscopePanel(props: { context: Plugin.Context; panel: PanelInput }) 
             </Section>
           )}
         </Show>
-
-        <Section title="Conversation content" note="local estimate">
-          <Bars rows={data().content.input} total={data().content.total} />
-          <Bars rows={data().content.output} total={data().content.total} />
-          <Line label="Total" value={`${tokens(data().content.total)} tokens`} strong />
-        </Section>
 
         <Show when={data().tools.length > 0}>
           <Section title="Tool output">
@@ -263,7 +269,10 @@ function TokenscopePanel(props: { context: Plugin.Context; panel: PanelInput }) 
 
         <Show when={data().subagents}>
           {(subagents) => (
-            <Section title="Subagents" note={`${subagents().sessions.length} child ${subagents().sessions.length === 1 ? "session" : "sessions"}`}>
+            <Section
+              title="Subagents"
+              note={`${subagents().sessions.length} child ${subagents().sessions.length === 1 ? "session" : "sessions"}`}
+            >
               <For each={subagents().sessions}>
                 {(session) => (
                   <Line
