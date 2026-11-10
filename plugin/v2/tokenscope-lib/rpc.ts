@@ -73,6 +73,21 @@ export interface ReportView {
   total: { cost: number; tokens: number; steps: number }
 }
 
+// RPC failures reject with a plain `{ type, message }` value. Solid's createResource replaces any
+// rejection that is not an Error with "Unknown error", so callers convert them with this first.
+export function toError(failure: unknown): Error {
+  if (failure instanceof Error) return failure
+  if (failure && typeof failure === "object" && "message" in failure && typeof failure.message === "string") {
+    return new Error(
+      "type" in failure && failure.type === "rpc.unavailable"
+        ? `${failure.message}. The TokenScope server plugin is not loaded for this session's project.`
+        : failure.message,
+      { cause: failure }
+    )
+  }
+  return new Error(String(failure), { cause: failure })
+}
+
 export const TokenscopeRpc = {
   id: "tokenscope",
   methods: {

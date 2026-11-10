@@ -7,7 +7,7 @@ import type { PanelInput } from "@opencode/plugin/tui/context"
 import { TextAttributes, type ScrollBoxRenderable } from "@opentui/core"
 import { createEffect, createMemo, createResource, For, on, Show } from "solid-js"
 
-import { TokenscopeRpc, type ReportRow, type ReportUsage, type ReportView } from "./tokenscope-lib/rpc.js"
+import { TokenscopeRpc, toError, type ReportRow, type ReportUsage, type ReportView } from "./tokenscope-lib/rpc.js"
 
 const PANEL_NAME = "tokenscope.report"
 const LABEL_WIDTH = 24
@@ -30,17 +30,6 @@ function usd(value: number): string {
 
 function percent(part: number, whole: number): string {
   return whole > 0 ? `${((part / whole) * 100).toFixed(1)}%` : ""
-}
-
-// RPC failures arrive as plain `{ type, message }` values, not Error instances.
-function failureMessage(error: unknown): string {
-  if (error instanceof Error) return error.message
-  if (error && typeof error === "object" && "message" in error && typeof error.message === "string") {
-    return "type" in error && error.type === "rpc.unavailable"
-      ? `${error.message}. The TokenScope server plugin is not loaded for this session's project.`
-      : error.message
-  }
-  return String(error)
 }
 
 function usageRows(usage: ReportUsage): ReportRow[] {
@@ -66,10 +55,14 @@ function TokenscopePanel(props: { context: Plugin.Context; panel: PanelInput }) 
     () => props.panel.sessionID,
     async (sessionID): Promise<ReportView> => {
       const directory = props.context.data.session.get(sessionID)?.location.directory
-      const output = await props.context.client
-        .rpc(TokenscopeRpc)
-        .report({ sessionID }, directory ? { location: { directory } } : undefined)
-      return output as ReportView
+      try {
+        const output = await props.context.client
+          .rpc(TokenscopeRpc)
+          .report({ sessionID }, directory ? { location: { directory } } : undefined)
+        return output as ReportView
+      } catch (failure) {
+        throw toError(failure)
+      }
     }
   )
 
@@ -313,7 +306,7 @@ function TokenscopePanel(props: { context: Plugin.Context; panel: PanelInput }) 
         <Show
           when={!report.error}
           fallback={
-            <text fg={theme.text.feedback.error.base}>{`Could not load the report: ${failureMessage(report.error)}`}</text>
+            <text fg={theme.text.feedback.error.base}>{`Could not load the report: ${report.error.message}`}</text>
           }
         >
           <Show when={report()} fallback={<text fg={theme.text.muted}>Analyzing session…</text>}>

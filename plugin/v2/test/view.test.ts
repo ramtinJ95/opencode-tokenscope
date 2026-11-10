@@ -3,6 +3,7 @@ import { expect, test } from "bun:test"
 import { DEFAULT_TOKENSCOPE_CONFIG } from "../tokenscope-lib/config.js"
 import { CostCalculator } from "../tokenscope-lib/cost.js"
 import type { TokenAnalysis } from "../tokenscope-lib/types.js"
+import { toError } from "../tokenscope-lib/rpc.js"
 import { apportion, buildReportView } from "../tokenscope-lib/view.js"
 import { buildFormatterFixtureAnalysis } from "./formatter.fixture.js"
 
@@ -147,4 +148,21 @@ test("a session with no completed request is not scaled", () => {
   expect(report.content.scale).toBeUndefined()
   expect(report.content.total).toBe(10_000)
   expect(report.warnings).toEqual([])
+})
+
+test("RPC failures become errors that keep their message", () => {
+  const declared = { type: "empty_session", message: "Session ses_1 has no messages yet.", data: {} }
+  const error = toError(declared)
+  expect(error).toBeInstanceOf(Error)
+  expect(error.message).toBe("Session ses_1 has no messages yet.")
+  expect(error.cause).toBe(declared)
+
+  expect(toError({ type: "rpc.unavailable", message: "RPC is unavailable: tokenscope" }).message).toBe(
+    "RPC is unavailable: tokenscope. The TokenScope server plugin is not loaded for this session's project."
+  )
+
+  const thrown = new Error("boom")
+  expect(toError(thrown)).toBe(thrown)
+  expect(toError("plain text").message).toBe("plain text")
+  expect(toError(undefined).message).toBe("undefined")
 })
