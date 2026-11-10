@@ -1,16 +1,22 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
   "name": "@ramtinj95/opencode-tokenscope",
-  "version": "1.8.1",
+  "version": "2.0.0",
   "description": "OpenCode plugin for detailed token usage analysis with breakdowns by category, visual charts, and subagent cost tracking",
   "type": "module",
   "main": "./dist/tokenscope.js",
   "types": "./dist/tokenscope.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/v2/tokenscope.d.ts",
+      "import": "./dist/v2/tokenscope.js"
+    }
+  },
   "scripts": {
     "clean": "rm -rf dist",
     "build": "npm run clean && tsc",
     "test": "bun test && npm run test:dist",
-    "test:dist": "npm run build && node -e \"await import('./dist/tokenscope.js')\"",
+    "test:dist": "npm run build && node -e \"await import('./dist/tokenscope.js'); await import('./dist/v2/tokenscope.js')\"",
     "prepublishOnly": "npm run build",
     "typecheck": "tsc --noEmit"
   },
@@ -34,7 +40,13 @@
   "author": "ramtinj95",
   "license": "MIT",
   "peerDependencies": {
-    "@opencode-ai/plugin": ">=1.1.48"
+    "@opencode-ai/plugin": ">=1.1.48",
+    "@opencode/plugin": "^2.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@opencode/plugin": {
+      "optional": true
+    }
   },
   "dependencies": {
     "@huggingface/tokenizers": "^0.1.3",
@@ -42,6 +54,7 @@
   },
   "devDependencies": {
     "@opencode-ai/plugin": "^1.15.13",
+    "@opencode/plugin": "^2.2.6",
     "@types/bun": "^1.2.0",
     "@types/node": "^22.0.0",
     "typescript": "^5.7.0"
