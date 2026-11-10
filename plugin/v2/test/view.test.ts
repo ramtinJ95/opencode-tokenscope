@@ -52,8 +52,12 @@ function measuredAnalysis(lastRequest: { input: number; output: number }): Token
   }
 }
 
+// Every view built here must survive the host's RPC output check: JSON values only, so no property
+// may be set to undefined.
 function view(analysis: TokenAnalysis, config = DEFAULT_TOKENSCOPE_CONFIG) {
-  return buildReportView(analysis, new CostCalculator({}).calculateCost(analysis), config)
+  const report = buildReportView(analysis, new CostCalculator({}).calculateCost(analysis), config)
+  expect(JSON.parse(JSON.stringify(report))).toStrictEqual(report)
+  return report
 }
 
 test("apportion keeps proportions and adds up to the total exactly", () => {

@@ -40,7 +40,7 @@ function nonEmpty(rows: ReportRow[]): ReportRow[] {
 }
 
 function contextRows(breakdown: ContextBreakdown): ReportRow[] {
-  const detail = (sources: string[]) => (sources.length > 0 ? sources.slice(0, MAX_DETAIL_LINES) : undefined)
+  const detail = (sources: string[]) => (sources.length > 0 ? { detail: sources.slice(0, MAX_DETAIL_LINES) } : {})
   const toolCount = breakdown.toolDefinitions.toolCount
 
   return nonEmpty([
@@ -56,9 +56,9 @@ function contextRows(breakdown: ContextBreakdown): ReportRow[] {
     {
       label: "Custom instructions",
       tokens: breakdown.customInstructions.tokens,
-      detail: detail(breakdown.customInstructions.sources),
+      ...detail(breakdown.customInstructions.sources),
     },
-    { label: "Catalogs & guidance", tokens: breakdown.guidance.tokens, detail: detail(breakdown.guidance.sources) },
+    { label: "Catalogs & guidance", tokens: breakdown.guidance.tokens, ...detail(breakdown.guidance.sources) },
   ])
 }
 
@@ -112,6 +112,8 @@ function scaleBreakdown(breakdown: ContextBreakdown, toolDefinitions: number, to
   }
 }
 
+// The host only delivers JSON values, and a property set to `undefined` is not one: it fails the
+// whole call. Optional fields are therefore left out, never set to undefined.
 export function buildReportView(analysis: TokenAnalysis, cost: CostEstimate, config: TokenscopeConfig): ReportView {
   const recordedTokens =
     analysis.inputTokens +
@@ -173,7 +175,7 @@ export function buildReportView(analysis: TokenAnalysis, cost: CostEstimate, con
         { label: "Reasoning", tokens: content.categories.reasoning.totalTokens },
       ]),
       total: scale === undefined ? estimated : recordedContext,
-      scale,
+      ...(scale === undefined ? {} : { scale }),
     },
     tools: collectToolUsage(shown).map((tool) => ({ name: tool.label, tokens: tool.tokens, calls: tool.calls })),
     topContributors: collectTopEntries(shown, TOP_CONTRIBUTOR_COUNT).map((entry) => ({

@@ -114,12 +114,16 @@ async function loadPlugin(input: {
       progress: async () => {},
     })
 
-  // Calls the report RPC the way the host does: declared errors come back as tagged values.
-  const report = (input: Record<string, unknown>): Promise<any> =>
-    registered.rpc.handlers.report(input, {
+  // Calls the report RPC the way the host does: declared errors come back as tagged values, and
+  // output that is not made of JSON values only (a property set to undefined, say) is rejected.
+  const report = async (input: Record<string, unknown>): Promise<any> => {
+    const output = await registered.rpc.handlers.report(input, {
       signal: new AbortController().signal,
       error: (type: string, message: string, data: unknown) => ({ rpcError: type, message, data }),
     })
+    expect(JSON.parse(JSON.stringify(output))).toStrictEqual(output)
+    return output
+  }
 
   return { registered, prompts, contextCalls, run, report }
 }
