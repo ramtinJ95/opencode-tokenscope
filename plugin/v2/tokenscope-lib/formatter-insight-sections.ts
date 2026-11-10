@@ -67,7 +67,9 @@ export function formatContextBreakdown(breakdown: ContextBreakdown): string[] {
   }
 
   lines.push(`  ───────────────────────────────────────────────────────────────────`)
-  lines.push(`  First Cache Write:${" ".repeat(36)}${formatNumber(total)} tokens`)
+  // The estimate is anchored on the first cache write; the measured total is the sum of its parts.
+  const totalLabel = isEstimated ? "First Cache Write:" : "Measured Request Context:"
+  lines.push(`  ${totalLabel.padEnd(54)}${isEstimated ? "" : "~"}${formatNumber(total)} tokens`)
   lines.push(``)
   if (isEstimated) {
     lines.push(`  Note: First cache_write is an observed count; component attribution is heuristic.`)
