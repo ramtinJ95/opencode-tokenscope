@@ -38,7 +38,7 @@ async function loadPlugin(input: {
   contexts: Record<string, unknown[]>
   options?: Record<string, unknown>
 }) {
-  const registered: { tool?: any; command?: any; contextHook?: (event: any) => void } = {}
+  const registered: { tool?: any; command?: any; rpc?: any; contextHook?: (event: any) => void } = {}
   const prompts: any[] = []
   const contextCalls: string[] = []
   const registration = { dispose: async () => {} }
@@ -94,6 +94,12 @@ async function loadPlugin(input: {
         return registration
       },
     },
+    rpc: {
+      async register(definition: any, handlers: any) {
+        registered.rpc = { definition, handlers }
+        return registration
+      },
+    },
   }
 
   await plugin.setup(ctx as any)
@@ -108,7 +114,14 @@ async function loadPlugin(input: {
       progress: async () => {},
     })
 
-  return { registered, prompts, contextCalls, run }
+  // Calls the report RPC the way the host does: declared errors come back as tagged values.
+  const report = (input: Record<string, unknown>): Promise<any> =>
+    registered.rpc.handlers.report(input, {
+      signal: new AbortController().signal,
+      error: (type: string, message: string, data: unknown) => ({ rpcError: type, message, data }),
+    })
+
+  return { registered, prompts, contextCalls, run, report }
 }
 
 // Reports are written to a private per-invocation file under OpenCode's temporary directory;
@@ -145,7 +158,7 @@ function captureRequest(harness: Harness, sessionID: string) {
   })
 }
 
-test("registers a V2 plugin with a directly callable tool and a /tokenscope command", async () => {
+test("registers a V2 plugin with a directly callable tool and a /tokenscope-report command", async () => {
   const harness = await loadPlugin({ sessions: {}, contexts: {} })
   const { tool, command } = harness.registered
 
@@ -154,7 +167,7 @@ test("registers a V2 plugin with a directly callable tool and a /tokenscope comm
   expect(tool.options).toEqual({ codemode: false })
   expect(tool.input.type).toBe("object")
   expect(Object.keys(tool.input.properties)).toEqual(["sessionID", "limitMessages", "includeSubagents"])
-  expect(command.name).toBe("tokenscope")
+  expect(command.name).toBe("tokenscope-report")
 
   await command.execute({ sessionID: "ses_current", prompt: { text: "  focus on tools " }, delivery: "steer" })
 
@@ -301,6 +314,66 @@ test("warns that only the active context is covered once a session has been comp
   expect(report).toContain("Session has been compacted. OpenCode exposes only the active context")
   expect(report).toContain("messages: 3060 tokens / $0.012000; session: 500000 tokens / $1.234500")
   expect(report).not.toContain("did not reconcile")
+})
+
+test("the report RPC returns the same analysis as structured data for native UIs", async () => {
+  const directory = await tempDirectory()
+  const usage = { input: 1_200, output: 80, reasoning: 0, cache: { read: 300, write: 900 } }
+  const harness = await loadPlugin({
+    sessions: { ses_current: sessionInfo("ses_current", directory, { cost: 0.01, tokens: usage }) },
+    contexts: {
+      ses_current: [
+        { id: "msg_1", type: "user", time, text: "Please read the config file and summarize it." },
+        assistant("msg_2", usage, [
+          { type: "text", text: "Reading it now." },
+          {
+            type: "tool",
+            id: "call_0",
+            name: "read",
+            time,
+            state: { status: "completed", input: { filePath: "config.json" }, content: [{ type: "text", text: '{"a":1}' }] },
+          },
+        ]),
+      ],
+    },
+  })
+  captureRequest(harness, "ses_current")
+
+  expect(harness.registered.rpc.definition.id).toBe("tokenscope")
+  const view = await harness.report({ sessionID: "ses_current" })
+
+  expect(view.sessionID).toBe("ses_current")
+  expect(view.steps).toBe(1)
+  expect(view.recorded).toEqual({ input: 1_200, cacheRead: 300, cacheWrite: 900, output: 80, reasoning: 0, cost: 0.01 })
+  expect(view.lastStep).toEqual(view.recorded)
+  expect(view.costBasis).toBe("recorded")
+  expect(view.total).toEqual({ cost: 0.01, tokens: 2_480, steps: 1 })
+  expect(view.content.input.map((row: any) => row.label)).toEqual(["System", "User", "Tools"])
+  expect(view.content.output.map((row: any) => row.label)).toEqual(["Assistant"])
+  expect(view.tools).toEqual([{ name: "read", tokens: view.content.input[2].tokens, calls: 1 }])
+  expect(view.context.measured).toBe(true)
+  expect(view.context.total).toBe(view.context.components.reduce((sum: number, row: any) => sum + row.tokens, 0))
+  expect(view.cache.hitRate).toBeCloseTo(20)
+  // The payload crosses a JSON transport.
+  expect(JSON.parse(JSON.stringify(view))).toEqual(view)
+  // No report file is written and the analyzed worktree is left untouched.
+  expect(await fs.readdir(directory)).toEqual([])
+})
+
+test("the report RPC fails explicitly for an empty or unreadable session", async () => {
+  const directory = await tempDirectory()
+  const harness = await loadPlugin({ sessions: { ses_current: sessionInfo("ses_current", directory) }, contexts: {} })
+
+  expect(await harness.report({ sessionID: "ses_current" })).toEqual({
+    rpcError: "empty_session",
+    message: "Session ses_current has no messages yet.",
+    data: {},
+  })
+  expect(await harness.report({ sessionID: "ses_missing" })).toEqual({
+    rpcError: "analysis_failed",
+    message: "Session not found: ses_missing",
+    data: {},
+  })
 })
 
 test("reports an empty session without failing the tool call", async () => {
