@@ -8,7 +8,26 @@ TokenScope turns the telemetry OpenCode has persisted for a session into a reada
 
 ## Installation
 
-### Option 1: npm (Recommended)
+The same package supports OpenCode V2 and OpenCode V1. Use the section for the version reported by `opencode --version`.
+
+### OpenCode V2
+
+```bash
+opencode plugin add @ramtinj95/opencode-tokenscope
+```
+
+Or add the package to `plugins` in `opencode.json(c)` (in your project or at `~/.config/opencode/opencode.jsonc` for global use):
+
+```jsonc
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugins": ["@ramtinj95/opencode-tokenscope"]
+}
+```
+
+Restart OpenCode and run `/tokenscope`. On V2 the plugin registers the `/tokenscope` command itself, so there is no command file to create.
+
+### OpenCode V1: npm (Recommended)
 
 1. **Install globally:**
 
@@ -51,13 +70,13 @@ To ask OpenCode's package resolver for the latest npm release, use `@latest`:
 }
 ```
 
-### Option 2: Install Script
+### Install Script (V1 and V2)
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/ramtinJ95/opencode-tokenscope/main/plugin/install.sh | bash
 ```
 
-The script installs the plugin and command into `~/.config/opencode`. It requires Bash, curl, npm, and an existing OpenCode config directory. Restart OpenCode, then run `/tokenscope`.
+The script checks `opencode --version`. On OpenCode V2 it runs `opencode plugin add` and lists leftover files from a V1 script install. On OpenCode V1 it installs the plugin and command into `~/.config/opencode`, which requires Bash, curl, npm, and an existing OpenCode config directory. Restart OpenCode, then run `/tokenscope`.
 
 ## See TokenScope in Action
 
@@ -76,9 +95,23 @@ A report brings the session's main signals together:
 
 ## Compatibility
 
-TokenScope supports `@opencode-ai/plugin >=1.1.48`. The accuracy contracts in this release were verified against OpenCode v1.17.18; older runtimes can differ in explanatory skill or tool formatting even when core telemetry remains available.
+| OpenCode | Plugin API | Implementation |
+| --- | --- | --- |
+| V2 (2.0 and newer) | `@opencode/plugin` | `plugin/v2/`, verified against OpenCode v2.2.6 |
+| V1 | `@opencode-ai/plugin >=1.1.48` | `plugin/tokenscope.ts`, unchanged from TokenScope 1.8.1 |
+
+One package serves both, and each OpenCode major loads only its own implementation: `main` in `package.json` points at the V1 module, which is what OpenCode V1 reads, and `exports` points at the V2 module, which is what OpenCode V2 resolves. V1 support is kept for a transition period and receives fixes only.
+
+On V1, the accuracy contracts were verified against OpenCode v1.17.18; older runtimes can differ in explanatory skill or tool formatting even when core telemetry remains available.
 
 TokenScope is an OpenCode plugin and tool, not a standalone CLI or transcript-file analyzer. The runtime report path is cross-platform; the one-line install script is intended for Unix-like environments with Bash.
+
+### Moving from OpenCode V1 to V2
+
+1. In `opencode.json`, rename `plugin` to `plugins`.
+2. Remove `~/.config/opencode/command/tokenscope.md`; on V2 the plugin registers `/tokenscope` itself.
+3. If you used the install script on V1, remove the files it copied into `~/.config/opencode/plugin/` (`tokenscope.ts`, `tokenscope-lib/`, `dist/`, `models.json`, `install.sh`). OpenCode V2 still scans that directory and logs a load failure for them. Running the install script again on V2 lists them.
+4. `~/.config/opencode/tokenscope-config.json` keeps working.
 
 ## Usage
 
@@ -88,7 +121,7 @@ Run the installed prompt command:
 /tokenscope
 ```
 
-The slash command is a small prompt file that invokes the plugin's `tokenscope` tool, reads the exact report path it returns, and prints the report verbatim. Agents can also call the tool directly.
+The slash command is a small prompt (a prompt file on V1, registered by the plugin on V2) that invokes the plugin's `tokenscope` tool, reads the exact report path it returns, and prints the report verbatim. Agents can also call the tool directly.
 
 ### Tool Options
 
@@ -126,6 +159,15 @@ OpenCode normally calculates recorded cost from normalized usage and model metad
 
 TokenScope reports the available skill/subagent catalogs, loaded skill results, observed tool usage, and estimated tool-definition size. Repeated skill calls are counted cumulatively because each persisted result adds retained content. Full session compaction can still remove older content from active context.
 
+### Differences on OpenCode V2
+
+The report layout is the same on both versions. OpenCode V2 exposes different data to plugins, which changes where some numbers come from:
+
+- **Measured request context.** TokenScope observes each model request, so the system category, the context breakdown, and tool-definition sizes are tokenized from the system prompt and tool definitions OpenCode actually sent, split by source (`core/environment`, `core/instructions`, `core/skill-guidance`, ...). For a session with no request since OpenCode started, such as an older session passed as `sessionID`, those sections fall back to labeled estimates and the report says so.
+- **Recorded usage per assistant message.** V2 stores usage on each assistant message, one per provider step, and on compaction requests. There are no `step-finish` records.
+- **Active context only.** V2 exposes a session's messages from the last completed compaction onward. After a compaction, retained content and recorded usage cover that window; a warning shows the message-derived totals next to OpenCode's aggregate for the whole session.
+- **Subagents and skills.** Child sessions come from the `subagent` tool, the skill tool takes a skill `id`, and skills a user invokes directly are counted like skill-tool results.
+
 ## Configuration
 
 Create a stable user override at:
@@ -158,6 +200,19 @@ Example override:
 }
 ```
 
+On OpenCode V2 the same flags can also be set as plugin options, which take precedence over both files:
+
+```jsonc
+{
+  "plugins": [
+    {
+      "package": "@ramtinj95/opencode-tokenscope",
+      "options": { "enableDetailedSubagentCostBreakdown": true }
+    }
+  ]
+}
+```
+
 Set a feature flag to `false` to hide that section. Detailed subagent costs expand each child with fresh input, cache read/write, output, reasoning, and estimated per-bucket costs. If OpenCode recorded a nonzero child cost, that value remains the displayed child total.
 
 ## Pricing and Tokenizer Coverage
@@ -174,13 +229,23 @@ The report names the pricing and tokenizer fallback it used, rather than present
 
 ## Updating
 
-### npm installation
+### OpenCode V2
+
+OpenCode checks unpinned plugins for newer versions at startup without changing the installed one. Install an update with:
+
+```bash
+opencode plugin update @ramtinj95/opencode-tokenscope
+```
+
+An entry pinned to an exact version, such as `"@ramtinj95/opencode-tokenscope@2.0.0"`, is never updated.
+
+### OpenCode V1: npm installation
 
 | Config in `opencode.json` | Behavior |
 | --- | --- |
 | `"@ramtinj95/opencode-tokenscope"` | Uses an unversioned package spec; cache and update behavior follows the OpenCode runtime. |
 | `"@ramtinj95/opencode-tokenscope@latest"` | Requests npm's current `latest` tag when OpenCode resolves the package. |
-| `"@ramtinj95/opencode-tokenscope@1.8.1"` | Requests the exact 1.8.1 release. |
+| `"@ramtinj95/opencode-tokenscope@2.0.0"` | Requests the exact 2.0.0 release. |
 
 Update a global installation manually:
 
@@ -188,7 +253,7 @@ Update a global installation manually:
 npm update -g @ramtinj95/opencode-tokenscope
 ```
 
-### Script installation
+### OpenCode V1: script installation
 
 Update an existing script installation:
 
@@ -208,20 +273,29 @@ The `--update` flag refreshes dependencies from the downloaded `package.json` be
 
 ### `/tokenscope` does not appear
 
+On OpenCode V2:
+
+1. Run `opencode plugin list` and check that a plugin with the ID `tokenscope` is loaded.
+2. If it is missing, check that your config uses `plugins`, not the V1 key `plugin`.
+3. Restart OpenCode completely.
+
+On OpenCode V1:
+
 1. Verify the command exists:
 
    ```bash
    ls ~/.config/opencode/command/tokenscope.md
    ```
 
-2. If it is missing, repeat installation step 3.
+2. If it is missing, repeat the step that creates the command file.
 3. Restart OpenCode completely.
 
 ### Counts differ from the OpenCode TUI
 
 - **Current turn:** the step that invokes TokenScope and later report-reading/final-response steps are outside the report snapshot.
 - **Approximate tokenizer warning:** reinstall/update the plugin, then check whether the model has a model-specific mapping.
-- **Compaction or revert:** retained content can differ from lifetime recorded usage and from the next provider request.
+- **Compaction or revert:** retained content can differ from lifetime recorded usage and from the next provider request. On OpenCode V2 a compacted session reports the active context only.
+- **Estimated context on V2:** a warning that no model request was observed means the system prompt and tool definitions for that session were estimated rather than measured.
 - **Zero recorded cost:** use the separately labeled API-rate estimate as an explanation, not as an invoice.
 
 ## Privacy and Network Access
