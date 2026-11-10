@@ -1,0 +1,185 @@
+// Telemetry helpers - extracts per-API-call token and cost data from session messages
+
+import type { ModelTokenUsage, SessionMessage } from "./types.js"
+
+export interface TelemetryCall {
+  providerID?: string
+  modelID?: string
+  inputTokens: number
+  outputTokens: number
+  reasoningTokens: number
+  cacheReadTokens: number
+  cacheWriteTokens: number
+  cost: number
+}
+
+export interface TelemetrySummary {
+  assistantMessageCount: number
+  apiCallCount: number
+  inputTokens: number
+  outputTokens: number
+  reasoningTokens: number
+  cacheReadTokens: number
+  cacheWriteTokens: number
+  callsWithCacheRead: number
+  callsWithCacheWrite: number
+  sessionCost: number
+  mostRecentInput: number
+  mostRecentOutput: number
+  mostRecentReasoning: number
+  mostRecentCacheRead: number
+  mostRecentCacheWrite: number
+  mostRecentCost: number
+  perModelUsage: ModelTokenUsage[]
+}
+
+function safeNumber(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : 0
+}
+
+function normalizeString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined
+}
+
+function buildTelemetryCall(message: SessionMessage): TelemetryCall | null {
+  const { tokens, cost, model } = message.info
+  const inputTokens = safeNumber(tokens?.input)
+  const outputTokens = safeNumber(tokens?.output)
+  const reasoningTokens = safeNumber(tokens?.reasoning)
+  const cacheReadTokens = safeNumber(tokens?.cache?.read)
+  const cacheWriteTokens = safeNumber(tokens?.cache?.write)
+  const normalizedCost = safeNumber(cost)
+
+  const hasActivity =
+    inputTokens + outputTokens + reasoningTokens + cacheReadTokens + cacheWriteTokens > 0 || normalizedCost > 0
+  if (!hasActivity) return null
+
+  return {
+    providerID: normalizeString(model?.providerID),
+    modelID: normalizeString(model?.modelID),
+    inputTokens,
+    outputTokens,
+    reasoningTokens,
+    cacheReadTokens,
+    cacheWriteTokens,
+    cost: normalizedCost,
+  }
+}
+
+function modelDisplayName(providerID?: string, modelID?: string): string {
+  if (providerID && modelID) return `${providerID}/${modelID}`
+  return modelID ?? providerID ?? "unknown model"
+}
+
+function modelGroupingKey(providerID?: string, modelID?: string): string {
+  return `${providerID ?? ""}\u0000${modelID ?? ""}`
+}
+
+function summarizeCallsByModel(calls: TelemetryCall[]): ModelTokenUsage[] {
+  const byModel = new Map<string, ModelTokenUsage>()
+
+  for (const call of calls) {
+    const key = modelGroupingKey(call.providerID, call.modelID)
+    const existing = byModel.get(key) ?? {
+      providerID: call.providerID,
+      modelID: call.modelID,
+      modelName: modelDisplayName(call.providerID, call.modelID),
+      inputTokens: 0,
+      outputTokens: 0,
+      reasoningTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      apiCost: 0,
+      apiCallCount: 0,
+      callsWithCacheRead: 0,
+      callsWithCacheWrite: 0,
+      costSegments: [],
+    }
+
+    existing.inputTokens += call.inputTokens
+    existing.outputTokens += call.outputTokens
+    existing.reasoningTokens += call.reasoningTokens
+    existing.cacheReadTokens += call.cacheReadTokens
+    existing.cacheWriteTokens += call.cacheWriteTokens
+    existing.apiCost += call.cost
+    existing.apiCallCount += 1
+    if (call.cacheReadTokens > 0) existing.callsWithCacheRead += 1
+    if (call.cacheWriteTokens > 0) existing.callsWithCacheWrite += 1
+    existing.costSegments?.push({
+      inputTokens: call.inputTokens,
+      outputTokens: call.outputTokens,
+      reasoningTokens: call.reasoningTokens,
+      cacheReadTokens: call.cacheReadTokens,
+      cacheWriteTokens: call.cacheWriteTokens,
+      apiCallCount: 1,
+    })
+
+    byModel.set(key, existing)
+  }
+
+  return Array.from(byModel.values()).sort((a, b) => b.apiCallCount - a.apiCallCount || a.modelName.localeCompare(b.modelName))
+}
+
+// Every assistant message is one model request (a step); it carries that request's usage.
+export function collectTelemetryCalls(messages: SessionMessage[]): TelemetryCall[] {
+  return messages.flatMap((message) => {
+    if (message.info.role !== "assistant") return []
+    return buildTelemetryCall(message) ?? []
+  })
+}
+
+export function summarizeTelemetry(messages: SessionMessage[]): TelemetrySummary {
+  const assistantMessageCount = messages.reduce((count, message) => count + (message.info.role === "assistant" ? 1 : 0), 0)
+  const calls = collectTelemetryCalls(messages)
+
+  let inputTokens = 0
+  let outputTokens = 0
+  let reasoningTokens = 0
+  let cacheReadTokens = 0
+  let cacheWriteTokens = 0
+  let callsWithCacheRead = 0
+  let callsWithCacheWrite = 0
+  let sessionCost = 0
+
+  for (const call of calls) {
+    inputTokens += call.inputTokens
+    outputTokens += call.outputTokens
+    reasoningTokens += call.reasoningTokens
+    cacheReadTokens += call.cacheReadTokens
+    cacheWriteTokens += call.cacheWriteTokens
+    sessionCost += call.cost
+
+    if (call.cacheReadTokens > 0) callsWithCacheRead += 1
+    if (call.cacheWriteTokens > 0) callsWithCacheWrite += 1
+  }
+
+  const mostRecent = calls[calls.length - 1]
+
+  return {
+    assistantMessageCount,
+    apiCallCount: calls.length,
+    inputTokens,
+    outputTokens,
+    reasoningTokens,
+    cacheReadTokens,
+    cacheWriteTokens,
+    callsWithCacheRead,
+    callsWithCacheWrite,
+    sessionCost,
+    mostRecentInput: mostRecent?.inputTokens ?? 0,
+    mostRecentOutput: mostRecent?.outputTokens ?? 0,
+    mostRecentReasoning: mostRecent?.reasoningTokens ?? 0,
+    mostRecentCacheRead: mostRecent?.cacheReadTokens ?? 0,
+    mostRecentCacheWrite: mostRecent?.cacheWriteTokens ?? 0,
+    mostRecentCost: mostRecent?.cost ?? 0,
+    perModelUsage: summarizeCallsByModel(calls),
+  }
+}
+
+export function firstCacheWriteTokens(messages: SessionMessage[]): number {
+  for (const call of collectTelemetryCalls(messages)) {
+    if (call.cacheWriteTokens > 0) return call.cacheWriteTokens
+  }
+
+  return 0
+}

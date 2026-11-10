@@ -19,7 +19,9 @@
   },
   "include": [
     "tokenscope.ts",
-    "tokenscope-lib/**/*"
+    "tokenscope-lib/**/*",
+    "v2/tokenscope.ts",
+    "v2/tokenscope-lib/**/*"
   ],
   "exclude": [
     "node_modules",
