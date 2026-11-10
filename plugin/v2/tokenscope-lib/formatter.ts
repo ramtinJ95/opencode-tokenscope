@@ -170,7 +170,7 @@ export class OutputFormatter {
     lines.push(`\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`)
     lines.push(`Locally tokenized retained message content (estimate):`)
     lines.push(`This is a content inventory, not billable usage or an exact active-context snapshot.`)
-    lines.push(`The system prompt is included when a model request was captured for this session (System#... entries).`)
+    lines.push(`System#... entries are the system prompt from the captured model request, when available.`)
     lines.push(`Provider framing, tool definitions, tool-call arguments, and media are not included.`)
     lines.push(``)
 

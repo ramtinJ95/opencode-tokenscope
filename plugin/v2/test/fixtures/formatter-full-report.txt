@@ -11,7 +11,7 @@ TOKEN BREAKDOWN BY CATEGORY
 ─────────────────────────────────────────────────────────────────────────
 Locally tokenized retained message content (estimate):
 This is a content inventory, not billable usage or an exact active-context snapshot.
-The system prompt is included when a model request was captured for this session (System#... entries).
+System#... entries are the system prompt from the captured model request, when available.
 Provider framing, tool definitions, tool-call arguments, and media are not included.
 
 Input Categories:

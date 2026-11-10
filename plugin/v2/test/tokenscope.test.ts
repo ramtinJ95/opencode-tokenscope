@@ -201,6 +201,8 @@ test("analyzes the calling session and measures context from the captured model 
   expect(content).toContain("Recorded telemetry total: 2,180")
   expect(report).toContain("Token Analysis: Session ses_current")
   expect(report).toContain("CONTEXT BREAKDOWN (Measured from the latest model request)")
+  expect(report).toContain("Measured Request Context:")
+  expect(report).not.toContain("First Cache Write:")
   expect(report).toContain("TOOL DEFINITION COSTS (Tokenized from the latest model request)")
   expect(report).toContain("System#prompt1")
   expect(report).not.toContain("No model request has been observed")
