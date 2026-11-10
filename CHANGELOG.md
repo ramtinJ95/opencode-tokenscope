@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- On OpenCode V2, `/tokenscope` opens a token usage panel beside the session. The panel reads the analysis from the plugin over RPC, so it makes no model request and adds nothing to the session, and it reloads when the session finishes a turn. It is also in the command palette as "Token usage report".
+- Added bundled pricing for `gpt-6.1-terra` from models.dev.
+
+### Changed
+
+- On OpenCode V2, the command that has the model print the text report is now `/tokenscope-report`. `/tokenscope` on OpenCode V1 is unchanged.
+
 ## [2.0.0] - 2026-11-10
 
 Adds OpenCode V2 support. OpenCode V1 keeps working without any change on the user's side: the V1 implementation is unchanged from 1.8.1 and stays in the package for a transition period.
