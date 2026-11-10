@@ -351,7 +351,7 @@ test("the report RPC returns the same analysis as structured data for native UIs
   expect(view.recorded).toEqual({ input: 1_200, cacheRead: 300, cacheWrite: 900, output: 80, reasoning: 0, cost: 0.01 })
   expect(view.lastStep).toEqual(view.recorded)
   expect(view.costBasis).toBe("recorded")
-  expect(view.total).toEqual({ cost: 0.01, tokens: 2_480, steps: 1 })
+  expect(view.total).toEqual({ cost: 0.01, costBasis: "recorded", tokens: 2_480, steps: 1 })
   expect(view.content.rows.map((row: any) => row.label)).toEqual([
     "System prompt",
     "Tool definitions",

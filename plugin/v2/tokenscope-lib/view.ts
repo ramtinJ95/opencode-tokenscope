@@ -3,7 +3,7 @@
 // text report prints the local estimates as they are, while this view scales them to recorded usage.
 
 import type { ContextBreakdown, CostEstimate, TokenAnalysis, TokenscopeConfig } from "./types.js"
-import type { ReportRow, ReportView } from "./rpc.js"
+import type { CostBasis, ReportRow, ReportView } from "./rpc.js"
 import { calculateModelAwareCacheEfficiency, collectToolUsage, collectTopEntries } from "./formatter-helpers.js"
 
 const TOP_CONTRIBUTOR_COUNT = 5
@@ -122,6 +122,7 @@ export function buildReportView(analysis: TokenAnalysis, cost: CostEstimate, con
     analysis.outputTokens +
     analysis.reasoningTokens
   const mainCost = cost.usesEstimatedCost ? cost.estimatedSessionCost : cost.apiSessionCost
+  const mainBasis: CostBasis = cost.usesEstimatedCost ? "estimated" : "recorded"
 
   const breakdown = config.enableContextBreakdown ? analysis.contextBreakdown : undefined
   // Tool definitions are part of every request but not of the transcript, so they are only known
@@ -199,9 +200,9 @@ export function buildReportView(analysis: TokenAnalysis, cost: CostEstimate, con
       reasoning: analysis.reasoningTokens,
       cost: cost.apiSessionCost,
     },
-    costBasis: cost.usesEstimatedCost ? "estimated" : "recorded",
+    costBasis: mainBasis,
     cost: mainCost,
-    total: { cost: mainCost, tokens: recordedTokens, steps: analysis.apiCallCount },
+    total: { cost: mainCost, costBasis: mainBasis, tokens: recordedTokens, steps: analysis.apiCallCount },
   }
 
   if (breakdown && breakdown.totalCachedContext > 0) {
@@ -237,18 +238,27 @@ export function buildReportView(analysis: TokenAnalysis, cost: CostEstimate, con
   const subagents = analysis.subagentAnalysis
   if (subagents && subagents.subagents.length > 0) {
     // OpenCode's recorded child cost where it is nonzero, otherwise the API-rate estimate.
-    const sessions = subagents.subagents.map((subagent) => ({
-      title: subagent.title,
-      agent: subagent.agentType,
-      tokens: subagent.totalTokens,
-      cost: subagent.apiCost > 0 ? subagent.apiCost : subagent.estimatedCost,
-      steps: subagent.apiCallCount,
-    }))
+    const sessions = subagents.subagents.map((subagent) => {
+      const costBasis: CostBasis = subagent.apiCost > 0 ? "recorded" : "estimated"
+      return {
+        title: subagent.title,
+        agent: subagent.agentType,
+        tokens: subagent.totalTokens,
+        cost: costBasis === "recorded" ? subagent.apiCost : subagent.estimatedCost,
+        costBasis,
+        steps: subagent.apiCallCount,
+      }
+    })
     const subagentCost = sessions.reduce((sum, session) => sum + session.cost, 0)
+    // Only amounts that are part of the sum decide what the sum is made of.
+    const bases = new Set(
+      [{ cost: mainCost, costBasis: mainBasis }, ...sessions].filter((part) => part.cost > 0).map((part) => part.costBasis)
+    )
 
     view.subagents = { steps: subagents.totalApiCalls, tokens: subagents.totalTokens, cost: subagentCost, sessions }
     view.total = {
       cost: mainCost + subagentCost,
+      costBasis: bases.size > 1 ? "mixed" : (bases.values().next().value ?? mainBasis),
       tokens: recordedTokens + subagents.totalTokens,
       steps: analysis.apiCallCount + subagents.totalApiCalls,
     }

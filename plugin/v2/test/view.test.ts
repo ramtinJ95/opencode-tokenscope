@@ -150,6 +150,74 @@ test("a session with no completed request is not scaled", () => {
   expect(report.warnings).toEqual([])
 })
 
+// The fixture's main session recorded $0.0456 and its one child recorded $0.0042 (API-rate estimate $0.004875).
+function withChildCost(apiCost: number, sessionCost = 0.0456): TokenAnalysis {
+  const analysis = buildFormatterFixtureAnalysis()
+  const subagents = analysis.subagentAnalysis!
+  return {
+    ...analysis,
+    sessionCost,
+    subagentAnalysis: { ...subagents, subagents: subagents.subagents.map((child) => ({ ...child, apiCost })) },
+  }
+}
+
+test("recorded costs stay labeled as recorded", () => {
+  const report = view(withChildCost(0.0042))
+
+  expect(report.costBasis).toBe("recorded")
+  expect(report.subagents!.sessions.map((session) => [session.cost, session.costBasis])).toEqual([[0.0042, "recorded"]])
+  expect(report.total.costBasis).toBe("recorded")
+  expect(report.total.cost).toBeCloseTo(0.0456 + 0.0042)
+})
+
+test("a recorded session with an estimated child has a mixed total", () => {
+  const report = view(withChildCost(0))
+
+  expect(report.costBasis).toBe("recorded")
+  expect(report.cost).toBe(0.0456)
+  expect(report.subagents!.sessions.map((session) => [session.cost, session.costBasis])).toEqual([
+    [0.004875, "estimated"],
+  ])
+  expect(report.total.costBasis).toBe("mixed")
+  expect(report.total.cost).toBeCloseTo(0.0456 + 0.004875)
+})
+
+test("an estimated session with a recorded child has a mixed total", () => {
+  const report = view(withChildCost(0.0042, 0))
+
+  expect(report.costBasis).toBe("estimated")
+  expect(report.cost).toBeGreaterThan(0)
+  expect(report.total.costBasis).toBe("mixed")
+})
+
+test("estimated costs throughout give an estimated total", () => {
+  const report = view(withChildCost(0, 0))
+
+  expect(report.costBasis).toBe("estimated")
+  expect(report.subagents!.sessions[0].costBasis).toBe("estimated")
+  expect(report.total.costBasis).toBe("estimated")
+})
+
+test("a child that adds no cost does not change what the total is made of", () => {
+  const analysis = withChildCost(0)
+  const child = analysis.subagentAnalysis!.subagents[0]
+  const report = view({
+    ...analysis,
+    subagentAnalysis: { ...analysis.subagentAnalysis!, subagents: [{ ...child, estimatedCost: 0 }] },
+  })
+
+  expect(report.total.costBasis).toBe("recorded")
+  expect(report.total.cost).toBe(0.0456)
+})
+
+test("without subagents the total has the session's cost basis", () => {
+  const recorded = view({ ...buildFormatterFixtureAnalysis(), subagentAnalysis: undefined })
+  const estimated = view({ ...buildFormatterFixtureAnalysis(), subagentAnalysis: undefined, sessionCost: 0 })
+
+  expect(recorded.total.costBasis).toBe("recorded")
+  expect(estimated.total.costBasis).toBe("estimated")
+})
+
 test("RPC failures become errors that keep their message", () => {
   const declared = { type: "empty_session", message: "Session ses_1 has no messages yet.", data: {} }
   const error = toError(declared)

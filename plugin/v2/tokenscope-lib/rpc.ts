@@ -22,6 +22,9 @@ export interface ReportUsage {
   cost: number
 }
 
+// "recorded" is OpenCode's own cost; "estimated" is API-rate pricing used where OpenCode recorded $0.
+export type CostBasis = "recorded" | "estimated"
+
 export interface ReportView {
   sessionID: string
   generatedAt: number
@@ -47,8 +50,8 @@ export interface ReportView {
   steps: number
   lastStep: ReportUsage
   recorded: ReportUsage
-  // "recorded" is OpenCode's own cost; "estimated" is API-rate pricing used when OpenCode recorded $0.
-  costBasis: "recorded" | "estimated"
+  // Cost of the main session alone.
+  costBasis: CostBasis
   cost: number
 
   // System prompt and tool definitions sent with every request.
@@ -66,11 +69,18 @@ export interface ReportView {
     steps: number
     tokens: number
     cost: number
-    sessions: Array<{ title: string; agent: string; tokens: number; cost: number; steps: number }>
+    sessions: Array<{
+      title: string
+      agent: string
+      tokens: number
+      cost: number
+      costBasis: CostBasis
+      steps: number
+    }>
   }
 
-  // Main session plus subagents.
-  total: { cost: number; tokens: number; steps: number }
+  // Main session plus subagents. The cost is "mixed" when it adds recorded and estimated amounts.
+  total: { cost: number; costBasis: CostBasis | "mixed"; tokens: number; steps: number }
 }
 
 // RPC failures reject with a plain `{ type, message }` value. Solid's createResource replaces any

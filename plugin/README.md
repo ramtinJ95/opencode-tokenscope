@@ -90,6 +90,7 @@ On OpenCode V2, `/tokenscope` opens a panel beside the session instead of printi
 - **Stays current.** It reloads on its own each time the session finishes a turn.
 - **Provider numbers as totals.** The last request, recorded usage, and session totals are the counts OpenCode recorded from the provider. The provider reports one count per request, not what it was made of, so the split by source (system prompt, tool definitions, user, tool output, assistant) is tokenized locally and then scaled so it adds up to the recorded context of the last request. The panel shows the scale it applied, for example `×0.99`.
 - **Sections.** The session total, warnings, the last request, the context window by source, the always-sent context (system prompt and tool definitions), tool output by tool, top contributors, recorded usage with cost and cache hit rate, and subagents when the session has any.
+- **Cost basis.** Costs are the ones OpenCode recorded. Where it recorded $0, for the session or for a subagent, the panel shows an API-rate estimate marked `(estimate)`, and a total that adds recorded and estimated amounts is marked `(partly estimated)`.
 
 | Key | Action |
 | --- | --- |

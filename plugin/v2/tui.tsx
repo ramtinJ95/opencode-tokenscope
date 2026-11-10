@@ -32,6 +32,13 @@ function percent(part: number, whole: number): string {
   return whole > 0 ? `${((part / whole) * 100).toFixed(1)}%` : ""
 }
 
+// Appended to a cost that is not, or not entirely, what OpenCode recorded.
+const COST_BASIS_NOTE = {
+  recorded: "",
+  estimated: " (estimate)",
+  mixed: " (partly estimated)",
+} as const
+
 function usageRows(usage: ReportUsage): ReportRow[] {
   return [
     { label: "Input (fresh)", tokens: usage.input },
@@ -180,8 +187,7 @@ function TokenscopePanel(props: { context: Plugin.Context; panel: PanelInput }) 
             {`${data().model} · ${data().steps} steps · ${data().tokenizer} tokenizer`}
           </text>
           <text fg={theme.text.base} attributes={TextAttributes.BOLD} wrapMode="none">
-            {`${usd(data().total.cost)} · ${tokens(data().total.tokens)} tokens`}
-            {data().costBasis === "estimated" ? " (API-rate estimate)" : ""}
+            {`${usd(data().total.cost)}${COST_BASIS_NOTE[data().total.costBasis]} · ${tokens(data().total.tokens)} tokens`}
           </text>
         </box>
 
@@ -270,13 +276,13 @@ function TokenscopePanel(props: { context: Plugin.Context; panel: PanelInput }) 
                 {(session) => (
                   <Line
                     label={session.agent}
-                    value={`${usd(session.cost)} · ${tokens(session.tokens)} tokens · ${session.steps} steps`}
+                    value={`${usd(session.cost)}${COST_BASIS_NOTE[session.costBasis]} · ${tokens(session.tokens)} tokens · ${session.steps} steps`}
                   />
                 )}
               </For>
               <Line
                 label="Session + subagents"
-                value={`${usd(data().total.cost)} · ${tokens(data().total.tokens)} tokens · ${data().total.steps} steps`}
+                value={`${usd(data().total.cost)}${COST_BASIS_NOTE[data().total.costBasis]} · ${tokens(data().total.tokens)} tokens · ${data().total.steps} steps`}
                 strong
               />
             </Section>
