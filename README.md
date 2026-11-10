@@ -82,13 +82,14 @@ The script checks `opencode --version`. On OpenCode V2 it runs `opencode plugin 
 
 ### Token usage panel (OpenCode V2)
 
-![The TokenScope panel open beside an OpenCode V2 session, showing the last request, the always-sent context, conversation content, tool output, and top contributors as bars](docs/tokenscope-panel.png)
+![The TokenScope panel open beside an OpenCode V2 session, showing the last request, the context window split by source, the always-sent context, tool output, top contributors, recorded usage, and subagents](docs/tokenscope-panel.png)
 
 On OpenCode V2, `/tokenscope` opens a panel beside the session instead of printing a report into it. The command is also in the command palette as "Token usage report".
 
 - **No model request.** The panel reads the analysis directly from the plugin, so opening it costs nothing and adds nothing to the session being measured.
 - **Stays current.** It reloads on its own each time the session finishes a turn.
-- **Sections.** The session total, warnings, the last request as OpenCode recorded it, the always-sent context (system prompt and tool definitions), conversation content, tool output, top contributors, recorded usage with cost and cache hit rate, and subagents when the session has any.
+- **Provider numbers as totals.** The last request, recorded usage, and session totals are the counts OpenCode recorded from the provider. The provider reports one count per request, not what it was made of, so the split by source (system prompt, tool definitions, user, tool output, assistant) is tokenized locally and then scaled so it adds up to the recorded context of the last request. The panel shows the scale it applied, for example `×0.99`.
+- **Sections.** The session total, warnings, the last request, the context window by source, the always-sent context (system prompt and tool definitions), tool output by tool, top contributors, recorded usage with cost and cache hit rate, and subagents when the session has any.
 
 | Key | Action |
 | --- | --- |
@@ -96,6 +97,8 @@ On OpenCode V2, `/tokenscope` opens a panel beside the session instead of printi
 | `f` | Toggle between the side panel and full screen |
 | `↑` `↓` `PgUp` `PgDn` | Scroll |
 | `esc` | Close the panel |
+
+The split is left as an unscaled local estimate, and labeled as one, when the request was not captured (a session with no request since OpenCode started) or when the local estimate is more than twice or less than half the recorded context. The text report prints local estimates unscaled.
 
 On a narrow terminal OpenCode shows the panel full screen. For the complete text report, run `/tokenscope-report`.
 
